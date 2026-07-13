@@ -240,8 +240,12 @@ td{padding:10px;border-bottom:1px solid var(--line)}
   
   <label>Ciblage</label>
   <select id="mnaTarget" style="margin-bottom:14px">
-    <option value="all">Tous les clients</option>
-    <option value="recent">Uniquement ceux venus dans les 7 derniers jours</option>
+    <option value="all">Tous les clients (installés)</option>
+    <option value="recent_7">Venus dans les 7 derniers jours</option>
+    <option value="recent_30">Venus dans les 30 derniers jours</option>
+    <option value="inactive_30">Inactifs (pas venus depuis > 30 jours)</option>
+    <option value="inactive_60">Inactifs (pas venus depuis > 60 jours)</option>
+    <option value="zero_visits">Jamais venus (0 achat)</option>
   </select>
 
   <label>Message</label>

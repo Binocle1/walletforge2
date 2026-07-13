@@ -30,6 +30,14 @@ router.post('/', required, roles('owner', 'admin'), async (req, res) => {
   res.json(rows[0]);
 });
 
+// GET /api/programs/:id — détail d'un programme
+router.get('/:id', required, async (req, res) => {
+  const { rows } = await db.query(
+    'SELECT * FROM loyalty_programs WHERE id = $1 AND tenant_id = $2', [req.params.id, req.auth.tid]);
+  if (!rows[0]) return res.status(404).json({ error: 'Programme introuvable' });
+  res.json(rows[0]);
+});
+
 // PATCH /api/programs/:id
 router.patch('/:id', required, roles('owner', 'admin'), async (req, res) => {
   const allowed = ['name', 'active', 'stamps_required', 'reward_label', 'points_per_unit', 'points_for_reward', 'card_design', 'barcode_type', 'automations'];

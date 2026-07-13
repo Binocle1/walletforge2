@@ -117,12 +117,18 @@ router.post('/notify_all', required, roles('owner', 'admin'), async (req, res) =
   
   let query = 'UPDATE customer_passes SET announcement = $1, last_updated = now() WHERE tenant_id = $2';
   
-  if (target === 'recent') {
-    query += ` AND EXISTS (
-      SELECT 1 FROM transactions t 
-      WHERE t.customer_id = customer_passes.customer_id 
-      AND t.created_at >= now() - interval '7 days'
-    )`;
+  if (target === 'recent_7') {
+    query += ` AND EXISTS (SELECT 1 FROM transactions t WHERE t.customer_id = customer_passes.customer_id AND t.created_at >= now() - interval '7 days')`;
+  } else if (target === 'recent_30') {
+    query += ` AND EXISTS (SELECT 1 FROM transactions t WHERE t.customer_id = customer_passes.customer_id AND t.created_at >= now() - interval '30 days')`;
+  } else if (target === 'inactive_30') {
+    query += ` AND EXISTS (SELECT 1 FROM transactions t WHERE t.customer_id = customer_passes.customer_id AND t.created_at < now() - interval '30 days')
+               AND NOT EXISTS (SELECT 1 FROM transactions t WHERE t.customer_id = customer_passes.customer_id AND t.created_at >= now() - interval '30 days')`;
+  } else if (target === 'inactive_60') {
+    query += ` AND EXISTS (SELECT 1 FROM transactions t WHERE t.customer_id = customer_passes.customer_id AND t.created_at < now() - interval '60 days')
+               AND NOT EXISTS (SELECT 1 FROM transactions t WHERE t.customer_id = customer_passes.customer_id AND t.created_at >= now() - interval '60 days')`;
+  } else if (target === 'zero_visits') {
+    query += ` AND NOT EXISTS (SELECT 1 FROM transactions t WHERE t.customer_id = customer_passes.customer_id AND t.type = 'purchase')`;
   }
   
   query += ' RETURNING id, customer_id';
