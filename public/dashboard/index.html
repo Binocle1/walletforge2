@@ -413,6 +413,7 @@ td{padding:10px;border-bottom:1px solid var(--line)}
 <script>
 const API = '/api';
 let TOKEN = localStorage.getItem('wf_token');
+let me = null;
 
 async function api(path, opts = {}) {
   const res = await fetch(API + path, {
@@ -497,7 +498,7 @@ async function loadHome() {
     ['Clients', s.total_customers], ['Nouveaux (30j)', s.new_customers_30d],
     ['Taux de retour', (s.return_rate ?? 0) + ' %'], ['Panier moyen', (s.avg_basket ?? 0) + ' €'],
     ['Cartes Apple', s.apple_installs], ['Cartes Google', s.google_installs],
-    ['Transactions', s.total_transactions], ['CA déclaré', Number(s.total_amount).toFixed(0) + ' €'],
+    ['Transactions', s.total_transactions], ['CA déclaré', Number(s.total_amount || 0).toFixed(0) + ' €'],
     ['Notifications', s.notifications_sent], ['Non installées', s.not_installed],
   ].map(([l, v]) => `<div class="card stat"><small>${l}</small><h2>${v ?? 0}</h2></div>`).join('');
   const days = s.tx_by_day || [];
@@ -852,7 +853,7 @@ async function uploadLogo() {
 // ---------- boot ----------
 async function boot() {
   try {
-    const me = await api('/auth/me');
+    me = await api('/auth/me');
     document.getElementById('auth').style.display = 'none';
     document.getElementById('app').style.display = 'grid';
     const st = await api('/status');
