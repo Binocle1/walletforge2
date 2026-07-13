@@ -80,9 +80,21 @@ td{padding:10px;border-bottom:1px solid var(--line)}
       <button id="tabReg" onclick="authTab('reg')">Créer un compte</button>
     </div>
     <div id="formLogin">
-      <label>Email</label><input id="lEmail" type="email" autocomplete="email">
+      <label>Email ou Nom d'utilisateur</label><input id="lEmail" autocomplete="username">
       <label>Mot de passe</label><input id="lPass" type="password" autocomplete="current-password">
-      <button class="btn" style="width:100%;margin-top:18px" onclick="login()">Se connecter</button>
+      <div style="text-align:right;margin-top:8px"><a href="#" onclick="showForgot()" style="font-size:13px;color:var(--pine)">Mot de passe oublié ?</a></div>
+      <button class="btn" style="width:100%;margin-top:14px" onclick="login()">Se connecter</button>
+    </div>
+    <div id="formForgot" style="display:none">
+      <h2 style="font-size:18px;margin-bottom:10px">Mot de passe oublié</h2>
+      <label>Email ou Nom d'utilisateur</label><input id="fEmail">
+      <button class="btn amber" style="width:100%;margin-top:14px" onclick="forgot()">Envoyer le lien</button>
+      <div style="text-align:center;margin-top:14px"><a href="#" onclick="authTab('login')" style="font-size:13px;color:var(--muted)">Retour à la connexion</a></div>
+    </div>
+    <div id="formReset" style="display:none">
+      <h2 style="font-size:18px;margin-bottom:10px">Nouveau mot de passe</h2>
+      <label>Entrez un nouveau mot de passe</label><input id="nPass" type="password">
+      <button class="btn amber" style="width:100%;margin-top:14px" onclick="resetPass()">Valider</button>
     </div>
     <div id="formReg" style="display:none">
       <label>Nom du commerce</label><input id="rBiz" placeholder="Café Gordon">
@@ -106,6 +118,7 @@ td{padding:10px;border-bottom:1px solid var(--line)}
     <a data-s="programs" onclick="go('programs')">Programmes & cartes</a>
     <a data-s="customers" onclick="go('customers')">Clients</a>
     <a data-s="tx" onclick="go('tx')">Transactions</a>
+    <a data-s="notifs" onclick="go('notifs')">Notifications</a>
     <a data-s="settings" onclick="go('settings')">Commerce</a>
     <a onclick="logout()" style="color:#e29a9a">Déconnexion</a>
     <div class="cfg" id="cfgStatus">Chargement du statut…</div>
@@ -149,6 +162,13 @@ td{padding:10px;border-bottom:1px solid var(--line)}
         <tbody></tbody></table></div>
     </div>
 
+    <div class="section" id="s-notifs">
+      <h1 style="margin-bottom:18px">Historique des notifications Push</h1>
+      <div class="card" style="overflow-x:auto"><table id="notifTable">
+        <thead><tr><th>Date</th><th>Client</th><th>Message</th><th>Type</th><th>Wallet</th><th>Statut</th></tr></thead>
+        <tbody></tbody></table></div>
+    </div>
+
     <div class="section" id="s-settings">
       <h1 style="margin-bottom:18px">Mon commerce</h1>
       <div class="card" style="max-width:560px">
@@ -173,6 +193,18 @@ td{padding:10px;border-bottom:1px solid var(--line)}
         <label>Message d'approche</label><input id="bRelText" placeholder="Passez nous voir !">
 
         <button class="btn" style="margin-top:24px" onclick="saveBusiness()">Enregistrer</button>
+      </div>
+      
+      <div class="card" style="margin-top:24px">
+        <div class="row" style="justify-content:space-between;margin-bottom:14px">
+          <h2>Équipe & Vendeurs</h2>
+          <button class="btn sm amber" onclick="openModal('mTeam')">+ Ajouter un membre</button>
+        </div>
+        <p style="color:var(--muted);font-size:13px;margin-bottom:16px">Les caissiers peuvent se connecter au scanner avec un simple nom d'utilisateur.</p>
+        <div style="overflow-x:auto"><table id="teamTable">
+          <thead><tr><th>Membre</th><th>Identifiant</th><th>Rôle</th><th>Action</th></tr></thead>
+          <tbody></tbody>
+        </table></div>
       </div>
     </div>
 
@@ -256,7 +288,23 @@ td{padding:10px;border-bottom:1px solid var(--line)}
   </div>
 </div></div>
 
-<!-- ---- modal automations ---- -->
+<!-- ---- modal team ---- -->
+<div class="modal" id="mTeam"><div class="card">
+  <h2 style="margin-bottom:14px">Nouveau membre</h2>
+  <label>Nom complet</label><input id="tmName" placeholder="Paul (Caissier)">
+  <label>Nom d'utilisateur (pour se connecter)</label><input id="tmUser" placeholder="paul_cafe">
+  <label>Mot de passe</label><input id="tmPass" type="password">
+  <label>Rôle</label>
+  <select id="tmRole">
+    <option value="cashier">Caissier (Scanner uniquement)</option>
+    <option value="manager">Manager (Scanner + Stats)</option>
+    <option value="admin">Administrateur</option>
+  </select>
+  <div class="row" style="margin-top:18px;justify-content:flex-end">
+    <button class="btn ghost" onclick="closeModal('mTeam')">Annuler</button>
+    <button class="btn amber" onclick="addTeamMember()">Ajouter</button>
+  </div>
+</div></div>
 <div class="modal" id="mAutomations"><div class="card">
   <h2 id="maTitle" style="margin-bottom:14px">Automatisations</h2>
   <p style="color:var(--muted);font-size:14px;margin-bottom:18px">Configurez des messages Push envoyés automatiquement.</p>
@@ -322,8 +370,30 @@ const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&l
 function authTab(t) {
   document.getElementById('formLogin').style.display = t === 'login' ? '' : 'none';
   document.getElementById('formReg').style.display = t === 'reg' ? '' : 'none';
+  document.getElementById('formForgot').style.display = 'none';
+  document.getElementById('formReset').style.display = 'none';
   document.getElementById('tabLogin').classList.toggle('on', t === 'login');
   document.getElementById('tabReg').classList.toggle('on', t === 'reg');
+}
+function showForgot() {
+  document.getElementById('formLogin').style.display = 'none';
+  document.getElementById('formForgot').style.display = '';
+}
+async function forgot() {
+  try {
+    const r = await api('/auth/forgot-password', { method: 'POST', body: { email: document.getElementById('fEmail').value } });
+    toast(r.message);
+  } catch(e) { toast(e.message, 1); }
+}
+async function resetPass() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const token = urlParams.get('reset');
+  try {
+    const r = await api('/auth/reset-password', { method: 'POST', body: { token, password: document.getElementById('nPass').value } });
+    toast(r.message);
+    window.history.replaceState({}, document.title, "/dashboard");
+    authTab('login');
+  } catch(e) { toast(e.message, 1); }
 }
 async function login() {
   try {
@@ -347,7 +417,7 @@ function go(s) {
   document.querySelectorAll('.section').forEach(x => x.classList.remove('on'));
   document.getElementById('s-' + s).classList.add('on');
   document.querySelectorAll('nav a[data-s]').forEach(a => a.classList.toggle('on', a.dataset.s === s));
-  ({ home: loadHome, programs: loadPrograms, customers: loadCustomers, tx: loadTx, settings: loadBusiness })[s]?.();
+  ({ home: loadHome, programs: loadPrograms, customers: loadCustomers, tx: loadTx, notifs: loadNotifs, settings: loadBusiness })[s]?.();
 }
 function openModal(id){document.getElementById(id).classList.add('on')}
 function closeModal(id){document.getElementById(id).classList.remove('on')}
@@ -531,7 +601,48 @@ async function loadTx() {
   </tr>`).join('') || '<tr><td colspan="7" style="color:var(--muted)">Aucune transaction.</td></tr>';
 }
 
+// ---------- notifications ----------
+async function loadNotifs() {
+  const list = await api('/notifications');
+  const typeLbl = { transactional: 'Transaction', automation: 'Automatique', manual: 'Manuel' };
+  const statLbl = { simulated: '<span class="pill n">En attente / Simulé</span>', sent: '<span class="pill g">Envoyé</span>', failed: '<span class="pill a" style="background:#fcebe9;color:var(--danger)">Échec</span>' };
+  const wLbl = { apple: 'Apple', google: 'Google', both: 'Les deux', none: 'Aucun' };
+  document.querySelector('#notifTable tbody').innerHTML = list.map(n => `<tr>
+    <td style="font-size:13px">${new Date(n.created_at).toLocaleString('fr-FR')}</td>
+    <td>${esc(n.first_name)} ${esc(n.last_name || '')}</td>
+    <td>${esc(n.message)}</td>
+    <td>${typeLbl[n.type] || esc(n.type)}</td>
+    <td>${wLbl[n.wallet_status] || esc(n.wallet_status)}</td>
+    <td>${statLbl[n.status] || esc(n.status)}</td>
+  </tr>`).join('') || '<tr><td colspan="6" style="color:var(--muted)">Aucune notification.</td></tr>';
+}
+
 // ---------- settings ----------
+async function loadTeam() {
+  const list = await api('/auth/users');
+  document.querySelector('#teamTable tbody').innerHTML = list.map(u => `<tr>
+    <td>${esc(u.full_name)}</td>
+    <td>${esc(u.username || u.email)}</td>
+    <td>${esc(u.role)}</td>
+    <td><button class="btn sm ghost" style="color:var(--danger)" onclick="delTeam('${u.id}')">Supprimer</button></td>
+  </tr>`).join('');
+}
+async function addTeamMember() {
+  try {
+    await api('/auth/invite', { method: 'POST', body: {
+      full_name: document.getElementById('tmName').value,
+      username: document.getElementById('tmUser').value,
+      password: document.getElementById('tmPass').value,
+      role: document.getElementById('tmRole').value
+    }});
+    closeModal('mTeam'); toast('Membre ajouté'); loadTeam();
+  } catch(e) { toast(e.message, 1); }
+}
+async function delTeam(id) {
+  if(!confirm('Supprimer ce membre ?')) return;
+  try { await api('/auth/users/'+id, {method:'DELETE'}); loadTeam(); } catch(e){ toast(e.message,1); }
+}
+
 async function loadBusiness() {
   const b = await api('/programs/business/profile');
   bName.value = b.name || ''; bColor.value = b.brand_color || '#16453a'; bText.value = b.text_color || '#ffffff';
@@ -539,6 +650,7 @@ async function loadBusiness() {
   bLinks.value = (b.back_links || []).map(l => l.label + ' | ' + l.url).join('\n');
   const loc = await api('/programs/business/location').catch(()=>({}));
   bAddress.value = loc.address || ''; bLat.value = loc.latitude || ''; bLng.value = loc.longitude || ''; bRelText.value = loc.relevant_text || '';
+  loadTeam();
 }
 async function saveBusiness() {
   const back_links = bLinks.value.split('\n').filter(Boolean).map(l => {
@@ -568,7 +680,17 @@ async function boot() {
     loadHome();
   } catch { localStorage.removeItem('wf_token'); TOKEN = null; }
 }
-if (TOKEN) boot();
+if (TOKEN) {
+  boot();
+} else {
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.has('reset')) {
+    document.getElementById('formLogin').style.display = 'none';
+    document.getElementById('formReg').style.display = 'none';
+    document.getElementById('formForgot').style.display = 'none';
+    document.getElementById('formReset').style.display = '';
+  }
+}
 </script>
 </body>
 </html>

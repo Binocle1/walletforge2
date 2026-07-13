@@ -75,6 +75,17 @@ router.get('/transactions', required, async (req, res) => {
   res.json(rows);
 });
 
+// GET /api/notifications — historique des envois
+router.get('/notifications', required, async (req, res) => {
+  const { rows } = await db.query(
+    `SELECT n.id, n.type, n.message, n.status, n.created_at, c.first_name, c.last_name, p.wallet_status
+     FROM notifications n
+     JOIN customers c ON c.id = n.customer_id
+     JOIN customer_passes p ON p.id = n.pass_id
+     WHERE n.tenant_id = $1 ORDER BY n.created_at DESC LIMIT 200`, [req.auth.tid]);
+  res.json(rows);
+});
+
 // GET /api/stats — dashboard statistiques
 router.get('/stats', required, async (req, res) => {
   const [stats, recent, notifs] = await Promise.all([
