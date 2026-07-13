@@ -5,6 +5,7 @@ const path = require('path');
 const authRoutes = require('./routes/auth');
 const programRoutes = require('./routes/programs');
 const customerRoutes = require('./routes/customers');
+const walletRoutes = require('./routes/wallet');
 const txRoutes = require('./routes/transactions');
 const uploadRoutes = require('./routes/upload');
 const billing = require('./routes/billing');
