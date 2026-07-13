@@ -18,7 +18,21 @@ let sa = null;
 function serviceAccount() {
   if (sa) return sa;
   const p = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-  if (!p || !fs.existsSync(path.resolve(p))) return null;
+  if (!p) return null;
+  
+  // Si c'est directement le contenu JSON en chaîne de caractères
+  if (p.trim().startsWith('{')) {
+    try {
+      sa = JSON.parse(p);
+      return sa;
+    } catch (e) {
+      console.error("Erreur de parsing de GOOGLE_SERVICE_ACCOUNT_JSON (string) :", e);
+      return null;
+    }
+  }
+  
+  // Sinon, c'est un chemin vers le fichier local
+  if (!fs.existsSync(path.resolve(p))) return null;
   sa = JSON.parse(fs.readFileSync(path.resolve(p), 'utf8'));
   return sa;
 }
