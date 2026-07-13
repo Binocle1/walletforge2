@@ -113,20 +113,23 @@ function hexToRgb(hex) {
 // icon.png est OBLIGATOIRE. On génère un fallback minimal si le commerce n'a pas de logo.
 async function passImages(business) {
   const images = {};
-  const logoPath = business.logo_url && business.logo_url.startsWith('/uploads')
-    ? path.join(__dirname, '../../public', business.logo_url) : null;
-  if (logoPath && fs.existsSync(logoPath)) {
-    const buf = fs.readFileSync(logoPath);
-    images['icon.png'] = buf;
-    images['icon@2x.png'] = buf;
-    images['logo.png'] = buf;
-    images['logo@2x.png'] = buf;
-  } else {
-    // fallback : QR "logo" 1x1 neutre — remplacé dès que le commerçant charge son logo
-    const png = await QRCode.toBuffer(business.name || 'W', { width: 58, margin: 0 });
-    images['icon.png'] = png;
-    images['icon@2x.png'] = await QRCode.toBuffer(business.name || 'W', { width: 116, margin: 0 });
+  
+  if (business.logo_url && business.logo_url.startsWith('data:image/')) {
+    try {
+      const b64 = business.logo_url.split(',')[1];
+      const buf = Buffer.from(b64, 'base64');
+      images['icon.png'] = buf;
+      images['icon@2x.png'] = buf;
+      images['logo.png'] = buf;
+      images['logo@2x.png'] = buf;
+      return images;
+    } catch(e) { console.error('[apple-wallet] logo parsing error', e); }
   }
+
+  // fallback : QR "logo" 1x1 neutre — remplacé dès que le commerçant charge son logo
+  const png = await QRCode.toBuffer(business.name || 'W', { width: 58, margin: 0 });
+  images['icon.png'] = png;
+  images['icon@2x.png'] = await QRCode.toBuffer(business.name || 'W', { width: 116, margin: 0 });
   return images;
 }
 

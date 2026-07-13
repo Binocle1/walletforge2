@@ -4,6 +4,19 @@ const loyalty = require('../services/loyalty');
 const apple = require('../services/appleWallet');
 const google = require('../services/googleWallet');
 
+// ---------- PUBLIC : infos du pass (pour landing "Renvoyer ma carte") ----------
+router.get('/pass-info/:serial', async (req, res) => {
+  const { rows } = await db.query(
+    `SELECT p.id as pass_id, b.name as business_name, c.first_name 
+     FROM customer_passes p 
+     JOIN loyalty_programs pr ON pr.id = p.program_id 
+     JOIN businesses b ON b.id = pr.business_id 
+     JOIN customers c ON c.id = p.customer_id
+     WHERE p.serial_number = $1`, [req.params.serial]);
+  if (!rows[0]) return res.status(404).json({ error: 'Carte introuvable' });
+  res.json(rows[0]);
+});
+
 // ---------- PUBLIC : téléchargement du .pkpass ----------
 router.get('/apple/:passId.pkpass', async (req, res) => {
   const ctx = await loyalty.loadPassContext(req.params.passId);

@@ -183,12 +183,16 @@ function askAmount() { pendingType = 'purchase'; document.getElementById('amount
 function askPoints() { pendingType = 'remove_points'; document.getElementById('amountRow').classList.add('on'); document.getElementById('amount').focus(); }
 function confirmPurchase() { tx(pendingType, Number(document.getElementById('amount').value || 0)); }
 
+let returnTimer = null;
 async function tx(type, amount) {
   try {
     const r = await api('/transactions', { method: 'POST', body: { pass_id: current.pass_id, type, amount } });
     toast(r.message);
     current.stamps = r.pass.stamps; current.points = r.pass.points; current.rewards_available = r.pass.rewards_available;
     renderProfile();
+    
+    clearTimeout(returnTimer);
+    returnTimer = setTimeout(() => startScan(), 2500);
   } catch (e) { toast(e.message, 1); }
 }
 

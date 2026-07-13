@@ -202,6 +202,14 @@ td{padding:10px;border-bottom:1px solid var(--line)}
     <div class="section" id="s-settings">
       <h1 style="margin-bottom:18px">Mon commerce</h1>
       <div class="card" style="max-width:560px">
+        <div class="row" style="align-items:center; gap: 16px; margin-bottom: 14px">
+          <div><img id="bLogoPreview" src="" alt="Logo" style="width: 60px; height: 60px; object-fit: cover; border-radius: 8px; background: #eee; display: none"></div>
+          <div style="flex:1">
+            <label>Logo du commerce</label>
+            <input type="file" id="bLogo" accept="image/png, image/jpeg" onchange="uploadLogo()">
+            <small style="color:var(--muted)">Format carré recommandé (PNG/JPG, max 2Mo)</small>
+          </div>
+        </div>
         <label>Nom</label><input id="bName">
         <div class="row">
           <div style="flex:1"><label>Couleur de marque</label><input id="bColor" type="color" style="height:44px;padding:4px"></div>
@@ -287,7 +295,15 @@ td{padding:10px;border-bottom:1px solid var(--line)}
     <button class="btn ghost sm" onclick="closeModal('mClient')">Fermer</button>
   </div>
   <p id="mcContact" style="color:var(--muted);font-size:14px;margin-bottom:14px"></p>
-  <div class="grid s4" style="margin-bottom:18px" id="mcStats"></div>
+  <div id="mcStats" class="row" style="gap:14px;margin-bottom:24px;flex-wrap:wrap"></div>
+
+  <h3 style="margin-bottom:10px">Lien d'installation</h3>
+  <p style="color:var(--muted);font-size:14px;margin-bottom:10px">Envoyez ce lien au client pour qu'il (ré)installe sa carte.</p>
+  <div class="row" style="margin-bottom:24px; gap:8px">
+    <input id="mcLink" readonly style="flex:1" onclick="this.select()">
+    <button class="btn ghost" onclick="copyCardLink()">Copier</button>
+  </div>
+
   <div style="padding-top:18px;border-top:1px solid var(--line)">
     <h3 style="margin-bottom:10px">Envoyer une notification (Push)</h3>
     <textarea id="mcNotifMsg" rows="3" placeholder="Votre message... (ex: Votre commande est prête !)" style="margin-bottom:10px"></textarea>
@@ -589,9 +605,22 @@ async function showClient(id) {
       <div class="card stat"><small>Coches/Visites</small><h2>${p.type === 'stamps' ? (c.stamps_total || 0) : (c.visits || 0)}</h2></div>
       <div class="card stat"><small>Dépensé</small><h2>${Number(c.total_spent||0).toFixed(0)} €</h2></div>
     `;
+    if (p.serial) {
+      document.getElementById('mcLink').value = window.location.origin + '/card/' + p.serial;
+    } else {
+      document.getElementById('mcLink').value = 'Aucune carte active';
+    }
     document.getElementById('mcNotifMsg').value = '';
     openModal('mClient');
   } catch(e) { toast(e.message, 1); }
+}
+
+function copyCardLink() {
+  const link = document.getElementById('mcLink').value;
+  if (link && link.startsWith('http')) {
+    navigator.clipboard.writeText(link);
+    toast('Lien copié dans le presse-papier !');
+  }
 }
 
 async function sendNotifClient() {
@@ -727,6 +756,12 @@ async function loadBusiness() {
   bLinks.value = (b.back_links || []).map(l => l.label + ' | ' + l.url).join('\n');
   const loc = await api('/programs/business/location').catch(()=>({}));
   bAddress.value = loc.address || ''; bLat.value = loc.latitude || ''; bLng.value = loc.longitude || ''; bRelText.value = loc.relevant_text || '';
+  
+  if (b.logo_url) {
+    document.getElementById('bLogoPreview').src = b.logo_url;
+    document.getElementById('bLogoPreview').style.display = 'block';
+  }
+  
   loadTeam();
 }
 async function saveBusiness() {
@@ -741,6 +776,26 @@ async function saveBusiness() {
     address: bAddress.value, latitude: bLat.value ? Number(bLat.value) : null, longitude: bLng.value ? Number(bLng.value) : null, relevant_text: bRelText.value } });
     
   toast('Commerce mis à jour ✔');
+}
+
+async function uploadLogo() {
+  const file = document.getElementById('bLogo').files[0];
+  if (!file) return;
+  const formData = new FormData();
+  formData.append('logo', file);
+  
+  try {
+    const r = await fetch(API + '/upload/logo', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + TOKEN },
+      body: formData
+    });
+    const res = await r.json();
+    if (!r.ok) throw new Error(res.error || 'Erreur upload');
+    document.getElementById('bLogoPreview').src = res.logo_url;
+    document.getElementById('bLogoPreview').style.display = 'block';
+    toast('Logo mis à jour avec succès');
+  } catch(e) { toast(e.message, 1); }
 }
 
 // ---------- boot ----------

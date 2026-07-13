@@ -5,8 +5,8 @@ const path = require('path');
 const authRoutes = require('./routes/auth');
 const programRoutes = require('./routes/programs');
 const customerRoutes = require('./routes/customers');
-const walletRoutes = require('./routes/wallet');
 const txRoutes = require('./routes/transactions');
+const uploadRoutes = require('./routes/upload');
 const billing = require('./routes/billing');
 const apple = require('./services/appleWallet');
 const google = require('./services/googleWallet');
@@ -49,6 +49,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/programs', programRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/wallet', walletRoutes);
+app.use('/api/upload', uploadRoutes);
 app.use('/api/apple', walletRoutes);          // web service Apple : /api/apple/v1/...
 app.use('/api', txRoutes);
 app.use('/api/billing', billing.router);
@@ -70,6 +71,7 @@ app.use('/scanner', express.static(path.join(__dirname, '../public/scanner')));
 app.use('/admin', express.static(path.join(__dirname, '../public/admin')));
 app.use('/join-assets', express.static(path.join(__dirname, '../public/landing')));
 app.get('/join/:programId', (req, res) => res.sendFile(path.join(__dirname, '../public/landing/index.html')));
+app.get('/card/:serial', (req, res) => res.sendFile(path.join(__dirname, '../public/card.html')));
 app.get('/', (req, res) => res.redirect('/dashboard/'));
 
 // ---------- Erreurs ----------
