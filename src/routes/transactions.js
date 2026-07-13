@@ -88,13 +88,24 @@ router.get('/notifications', required, async (req, res) => {
 
 // GET /api/stats — dashboard statistiques
 router.get('/stats', required, async (req, res) => {
-  const [stats, recent, notifs] = await Promise.all([
+  const [stats, recent, notifs, top_customers, rewards] = await Promise.all([
     db.query('SELECT * FROM v_tenant_stats WHERE tenant_id = $1', [req.auth.tid]),
     db.query(
       `SELECT date_trunc('day', created_at)::date AS day, count(*)::int AS n
        FROM transactions WHERE tenant_id = $1 AND created_at > now() - interval '30 days'
        GROUP BY 1 ORDER BY 1`, [req.auth.tid]),
     db.query(`SELECT count(*)::int AS n FROM notifications WHERE tenant_id = $1`, [req.auth.tid]),
+    db.query(
+      `SELECT c.first_name, c.last_name, 
+              coalesce(sum(t.amount), 0) AS spent, 
+              coalesce(sum(t.stamps_delta), 0) AS stamps
+       FROM customers c
+       JOIN transactions t ON t.customer_id = c.id
+       WHERE c.tenant_id = $1 AND t.type IN ('purchase', 'add_stamp')
+       GROUP BY c.id
+       ORDER BY spent DESC, stamps DESC
+       LIMIT 5`, [req.auth.tid]),
+    db.query(`SELECT count(*)::int AS n FROM transactions WHERE tenant_id = $1 AND type = 'reward_redeemed'`, [req.auth.tid])
   ]);
   const newCustomers = await db.query(
     `SELECT count(*)::int AS n FROM customers WHERE tenant_id = $1 AND created_at > now() - interval '30 days'`,
@@ -104,6 +115,8 @@ router.get('/stats', required, async (req, res) => {
     new_customers_30d: newCustomers.rows[0].n,
     notifications_sent: notifs.rows[0].n,
     tx_by_day: recent.rows,
+    top_customers: top_customers.rows,
+    rewards_redeemed: rewards.rows[0].n
   });
 });
 

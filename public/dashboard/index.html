@@ -118,6 +118,7 @@ td{padding:10px;border-bottom:1px solid var(--line)}
     <a data-s="programs" onclick="go('programs')">Programmes & cartes</a>
     <a data-s="customers" onclick="go('customers')">Clients</a>
     <a data-s="tx" onclick="go('tx')">Transactions</a>
+    <a data-s="stats" onclick="go('stats')">Statistiques</a>
     <a data-s="notifs" onclick="go('notifs')">Notifications</a>
     <a data-s="settings" onclick="go('settings')">Commerce</a>
     <a onclick="logout()" style="color:#e29a9a">Déconnexion</a>
@@ -151,7 +152,7 @@ td{padding:10px;border-bottom:1px solid var(--line)}
         </div>
       </div>
       <div class="card" style="overflow-x:auto"><table id="custTable">
-        <thead><tr><th>Client</th><th>Contact</th><th>Carte</th><th>Solde</th><th>Coches / Visites</th><th>Wallet</th><th>RGPD</th></tr></thead>
+        <thead><tr><th>Client</th><th>Contact</th><th>Carte</th><th>Solde</th><th>Coches / Visites</th><th>Dernière visite</th><th>Wallet</th><th>RGPD</th></tr></thead>
         <tbody></tbody></table></div>
     </div>
 
@@ -160,6 +161,35 @@ td{padding:10px;border-bottom:1px solid var(--line)}
       <div class="card" style="overflow-x:auto"><table id="txTable">
         <thead><tr><th>Date</th><th>Client</th><th>Programme</th><th>Type</th><th>Montant</th><th>Δ</th><th>Vendeur</th></tr></thead>
         <tbody></tbody></table></div>
+    </div>
+
+    <div class="section" id="s-stats">
+      <h1 style="margin-bottom:18px">Statistiques d'activité</h1>
+      
+      <div class="row" style="gap:14px;margin-bottom:20px;flex-wrap:wrap">
+        <div class="card stat" style="flex:1;min-width:140px"><small>Chiffre d'affaires</small><h2 id="stCa" style="color:var(--pine)">0 €</h2></div>
+        <div class="card stat" style="flex:1;min-width:140px"><small>Clients (total)</small><h2 id="stCust">0</h2><small id="stNewCust" style="color:var(--pine)">+0 ce mois</small></div>
+        <div class="card stat" style="flex:1;min-width:140px"><small>Récompenses distribuées</small><h2 id="stRewards">0</h2></div>
+        <div class="card stat" style="flex:1;min-width:140px"><small>Apple / Google / Aucun</small><h2 style="font-size:18px" id="stWallets">0 / 0 / 0</h2></div>
+      </div>
+
+      <div class="row" style="gap:20px;align-items:flex-start;flex-wrap:wrap">
+        <div class="card" style="flex:2;min-width:300px">
+          <h2 style="margin-bottom:14px">Activité sur les 30 derniers jours</h2>
+          <div id="stChart" style="display:flex;align-items:flex-end;height:150px;gap:4px;border-bottom:1px solid var(--line);padding-bottom:5px"></div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:5px">
+            <span id="stChartStart"></span><span id="stChartEnd"></span>
+          </div>
+        </div>
+
+        <div class="card" style="flex:1;min-width:250px">
+          <h2 style="margin-bottom:14px">🏆 Top 5 Meilleurs Clients</h2>
+          <table id="stTopCust" style="font-size:13px">
+            <thead><tr><th>Client</th><th>Dépensé</th><th>Tampons</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <div class="section" id="s-notifs">
@@ -420,7 +450,7 @@ function go(s) {
   document.querySelectorAll('.section').forEach(x => x.classList.remove('on'));
   document.getElementById('s-' + s).classList.add('on');
   document.querySelectorAll('nav a[data-s]').forEach(a => a.classList.toggle('on', a.dataset.s === s));
-  ({ home: loadHome, programs: loadPrograms, customers: loadCustomers, tx: loadTx, notifs: loadNotifs, settings: loadBusiness })[s]?.();
+  ({ home: loadHome, programs: loadPrograms, customers: loadCustomers, tx: loadTx, stats: loadStats, notifs: loadNotifs, settings: loadBusiness })[s]?.();
 }
 function openModal(id){document.getElementById(id).classList.add('on')}
 function closeModal(id){document.getElementById(id).classList.remove('on')}
@@ -531,12 +561,13 @@ async function loadCustomers() {
       <td>${esc(p.program || '—')}</td>
       <td>${p.type === 'stamps' ? (p.stamps ?? 0) + ' tampons' : Number(p.points ?? 0) + ' pts'}${p.rewards > 0 ? ` <span class="pill a">${p.rewards} 🎁</span>` : ''}</td>
       <td>${p.type === 'stamps' ? (c.stamps_total || 0) : c.visits}</td>
+      <td style="font-size:13px">${c.last_visit ? new Date(c.last_visit).toLocaleDateString('fr-FR') : '—'}</td>
       <td>${wallet}</td>
       <td><button class="btn sm ghost" onclick="showClient('${c.id}')">Détails</button>
           <button class="btn sm ghost" onclick="exportCust('${c.id}')">Export</button>
           <button class="btn sm ghost" style="color:var(--danger)" onclick="anonCust('${c.id}')">Anonymiser</button></td>
     </tr>`;
-  }).join('') || '<tr><td colspan="7" style="color:var(--muted)">Aucun client pour le moment. Affiche ton QR d\'inscription en caisse.</td></tr>';
+  }).join('') || '<tr><td colspan="8" style="color:var(--muted)">Aucun client pour le moment. Affiche ton QR d\'inscription en caisse.</td></tr>';
 }
 function exportCust(id) {
   fetch(API + '/customers/' + id + '/export', { headers: { Authorization: 'Bearer ' + TOKEN } })
@@ -602,6 +633,52 @@ async function loadTx() {
     <td>${t.stamps_delta ? t.stamps_delta + ' tampon' : ''}${Number(t.points_delta) ? Number(t.points_delta) + ' pts' : ''}</td>
     <td style="font-size:13px">${esc(t.staff_name || '—')}</td>
   </tr>`).join('') || '<tr><td colspan="7" style="color:var(--muted)">Aucune transaction.</td></tr>';
+}
+
+// ---------- statistiques ----------
+async function loadStats() {
+  const s = await api('/stats');
+  document.getElementById('stCa').textContent = Number(s.total_amount||0).toFixed(2) + ' €';
+  document.getElementById('stCust').textContent = s.total_customers || 0;
+  document.getElementById('stNewCust').textContent = '+' + (s.new_customers_30d||0) + ' ces 30 derniers j';
+  document.getElementById('stRewards').textContent = s.rewards_redeemed || 0;
+  document.getElementById('stWallets').textContent = (s.apple_installs||0) + ' / ' + (s.google_installs||0) + ' / ' + (s.not_installed||0);
+  
+  // Tableau Top 5
+  document.querySelector('#stTopCust tbody').innerHTML = (s.top_customers || []).map(c => `<tr>
+    <td><b>${esc(c.first_name)}</b> ${esc(c.last_name || '')}</td>
+    <td style="color:var(--pine);font-weight:bold">${Number(c.spent||0).toFixed(0)} €</td>
+    <td>${c.stamps||0}</td>
+  </tr>`).join('') || '<tr><td colspan="3" style="color:var(--muted)">Pas de données</td></tr>';
+
+  // Graphique
+  const chart = document.getElementById('stChart');
+  chart.innerHTML = '';
+  if (s.tx_by_day && s.tx_by_day.length > 0) {
+    const maxN = Math.max(...s.tx_by_day.map(d => d.n), 1);
+    
+    // Remplir les trous des 30 derniers jours
+    const days = [];
+    for(let i=29; i>=0; i--) {
+      const d = new Date(); d.setDate(d.getDate()-i);
+      const iso = d.toISOString().split('T')[0];
+      const exist = s.tx_by_day.find(x => x.day.startsWith(iso));
+      days.push({ day: iso, n: exist ? exist.n : 0 });
+    }
+
+    days.forEach(d => {
+      const pct = (d.n / maxN) * 100;
+      const bar = document.createElement('div');
+      bar.style.flex = '1'; bar.style.backgroundColor = 'var(--pine)'; bar.style.height = pct + '%';
+      bar.style.borderRadius = '3px 3px 0 0'; bar.style.minHeight = '2px';
+      bar.title = `${d.n} passages le ${new Date(d.day).toLocaleDateString()}`;
+      chart.appendChild(bar);
+    });
+    document.getElementById('stChartStart').textContent = new Date(days[0].day).toLocaleDateString('fr-FR', {day:'numeric', month:'short'});
+    document.getElementById('stChartEnd').textContent = new Date(days[days.length-1].day).toLocaleDateString('fr-FR', {day:'numeric', month:'short'});
+  } else {
+    chart.innerHTML = '<div style="margin:auto;color:var(--muted)">Aucune activité récente</div>';
+  }
 }
 
 // ---------- notifications ----------
