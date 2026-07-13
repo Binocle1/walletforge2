@@ -55,13 +55,17 @@ CREATE TABLE locations (
 CREATE TABLE users (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id     UUID REFERENCES tenants(id) ON DELETE CASCADE,  -- NULL = super admin plateforme
-  email         TEXT NOT NULL UNIQUE,
+  email         TEXT UNIQUE,
+  username      TEXT,
   password_hash TEXT NOT NULL,
   full_name     TEXT NOT NULL,
   role          TEXT NOT NULL DEFAULT 'owner',   -- superadmin | owner | admin | manager | cashier | readonly
   location_id   UUID REFERENCES locations(id) ON DELETE SET NULL,
   email_verified BOOLEAN NOT NULL DEFAULT false,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+  reset_token   TEXT,
+  reset_expires TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, username)
 );
 
 -- ---------- Programmes de fidélité ----------
@@ -80,6 +84,7 @@ CREATE TABLE loyalty_programs (
   -- design de la carte wallet
   card_design   JSONB NOT NULL DEFAULT '{}',     -- {bg_color, text_color, label_color, logo_url, strip_url, description, terms}
   barcode_type  TEXT NOT NULL DEFAULT 'qr',      -- qr | code128
+  automations   JSONB NOT NULL DEFAULT '{}',     -- {welcome, birthday, winback, review}
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -115,6 +120,7 @@ CREATE TABLE customer_passes (
   rewards_available INT NOT NULL DEFAULT 0,
   wallet_status TEXT NOT NULL DEFAULT 'none',    -- none | apple | google | both
   announcement  TEXT,
+  announcement_expires_at TIMESTAMPTZ,
   last_updated  TIMESTAMPTZ NOT NULL DEFAULT now(),
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (customer_id, program_id)
@@ -158,6 +164,7 @@ CREATE TABLE notifications (
   pass_id     UUID REFERENCES customer_passes(id) ON DELETE CASCADE,
   type        TEXT NOT NULL DEFAULT 'transactional',   -- transactional | marketing (phase 2)
   message     TEXT NOT NULL,
+  automation_id TEXT,                                  -- ex: winback, birthday_2026 (pour dédoublonnage)
   status      TEXT NOT NULL DEFAULT 'queued',          -- queued | sent | failed | simulated
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );

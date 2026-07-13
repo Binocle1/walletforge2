@@ -128,12 +128,15 @@ async function applyTransaction({ passId, type, amount, userId, locationId, comm
   }
 
   // Notification + rafraîchissement des wallets (best-effort, non bloquant)
-  notifyAndRefresh(ctx, message).catch((e) => console.error('[wallet-update]', e.message));
+  notifyAndRefresh(ctx, message, 'transactional').catch((e) => console.error('[wallet-update]', e.message));
 
   return { pass: ctx.pass, message };
 }
 
-async function notifyAndRefresh(ctx, message) {
+async function notifyAndRefresh(ctx, message, type = 'transactional', automationId = null) {
+  // Met à jour le message affiché sur la carte avec une expiration de 24h
+  await db.query(`UPDATE customer_passes SET announcement = $1, announcement_expires_at = now() + interval '24 hours', last_updated = now() WHERE id = $2`, [message, ctx.pass.id]);
+
   let status = 'simulated';
 
   // Apple : push APNs vide -> l'iPhone re-télécharge le pass (la maj s'affiche sur l'écran verrouillé si champ "changeMessage")
@@ -152,9 +155,9 @@ async function notifyAndRefresh(ctx, message) {
   }
 
   await db.query(
-    `INSERT INTO notifications (tenant_id, customer_id, pass_id, type, message, status)
-     VALUES ($1,$2,$3,'transactional',$4,$5)`,
-    [ctx.tenantId, ctx.pass.customer_id, ctx.pass.id, message, status]);
+    `INSERT INTO notifications (tenant_id, customer_id, pass_id, type, message, status, automation_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    [ctx.tenantId, ctx.pass.customer_id, ctx.pass.id, type, message, status, automationId]);
 }
 
-module.exports = { loadPassContext, createPass, applyTransaction };
+module.exports = { loadPassContext, createPass, applyTransaction, notifyAndRefresh };

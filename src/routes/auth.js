@@ -41,7 +41,14 @@ router.post('/register', async (req, res) => {
 router.post('/login', bruteForceGuard, async (req, res) => {
   const { email, password } = req.body;
   const loginId = (email || '').toLowerCase();
+  
+  // Parse username@commerce syntax if needed later, for now just match globally
   const { rows } = await db.query('SELECT * FROM users WHERE email = $1 OR username = $1', [loginId]);
+  if (rows.length > 1) {
+    req.loginFail();
+    return res.status(401).json({ error: 'Identifiant ambigu. Veuillez vous connecter avec votre adresse e-mail complète.' });
+  }
+  
   const user = rows[0];
   if (!user || !(await bcrypt.compare(password || '', user.password_hash))) {
     req.loginFail();
@@ -97,6 +104,13 @@ router.get('/users', required, roles('owner', 'admin'), async (req, res) => {
 // DELETE /api/auth/users/:id — Supprimer un membre
 router.delete('/users/:id', required, roles('owner', 'admin'), async (req, res) => {
   if (req.params.id === req.auth.uid) return res.status(400).json({ error: 'Vous ne pouvez pas vous supprimer vous-même' });
+  
+  const target = await db.query('SELECT role FROM users WHERE id = $1 AND tenant_id = $2', [req.params.id, req.auth.tid]);
+  if (target.rows[0]?.role === 'owner') {
+    const owners = await db.query('SELECT count(*) FROM users WHERE tenant_id = $1 AND role = $2', [req.auth.tid, 'owner']);
+    if (owners.rows[0].count <= 1) return res.status(400).json({ error: 'Impossible de supprimer le dernier propriétaire' });
+  }
+  
   await db.query('DELETE FROM users WHERE id = $1 AND tenant_id = $2', [req.params.id, req.auth.tid]);
   res.json({ ok: true });
 });
@@ -118,8 +132,15 @@ router.post('/forgot-password', bruteForceGuard, async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'Email requis' });
   
-  const { rows } = await db.query('SELECT id, email FROM users WHERE email = lower($1) OR username = lower($1)', [email]);
-  if (!rows[0]) return res.json({ ok: true }); // Ne pas révéler si le compte existe ou non
+  if (email.endsWith('@walletforge.local')) {
+    return res.status(400).json({ error: 'La réinitialisation n\'est pas disponible pour les comptes vendeurs sans e-mail. Contactez votre administrateur.' });
+  }
+
+  const { rows } = await db.query('SELECT id, email FROM users WHERE email = $1', [email.toLowerCase()]);
+  if (!rows[0]) {
+    // Fail silently to prevent email enumeration
+    return res.json({ ok: true, message: 'Si ce compte existe, un lien a été envoyé.' });
+  }
 
   const token = crypto.randomBytes(32).toString('hex');
   await db.query(
@@ -140,11 +161,10 @@ router.post('/forgot-password', bruteForceGuard, async (req, res) => {
       });
     } catch(e) { console.error('SMTP Error:', e); }
   } else {
-    debugUrl = resetLink;
-    console.log('\n[DEBUG] SMTP non configuré. Lien de reset pour', rows[0].email, ':', resetLink, '\n');
+    console.log('\n[CRITICAL] DEBUG MODE - Lien de reset pour', rows[0].email, ':\n\n', resetLink, '\n\n');
   }
 
-  res.json({ ok: true, message: 'Si ce compte existe, un lien a été envoyé.', debugUrl });
+  res.json({ ok: true, message: 'Si ce compte existe, un lien a été envoyé.' });
 });
 
 // POST /api/auth/reset-password

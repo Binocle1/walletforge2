@@ -117,29 +117,28 @@ router.post('/notify_all', required, roles('owner', 'admin'), async (req, res) =
   const { message, target } = req.body;
   if (!message) return res.status(400).json({ error: 'Message requis' });
   
-  let query = 'UPDATE customer_passes SET announcement = $1, last_updated = now() WHERE tenant_id = $2';
+  let query = 'SELECT p.id FROM customer_passes p JOIN customers c ON c.id = p.customer_id WHERE p.tenant_id = $1 AND c.marketing_consent = true AND c.anonymized = false';
   
   if (target === 'recent_7') {
-    query += ` AND EXISTS (SELECT 1 FROM transactions t WHERE t.customer_id = customer_passes.customer_id AND t.created_at >= now() - interval '7 days')`;
+    query += ` AND EXISTS (SELECT 1 FROM transactions t WHERE t.customer_id = p.customer_id AND t.created_at >= now() - interval '7 days')`;
   } else if (target === 'recent_30') {
-    query += ` AND EXISTS (SELECT 1 FROM transactions t WHERE t.customer_id = customer_passes.customer_id AND t.created_at >= now() - interval '30 days')`;
+    query += ` AND EXISTS (SELECT 1 FROM transactions t WHERE t.customer_id = p.customer_id AND t.created_at >= now() - interval '30 days')`;
   } else if (target === 'inactive_30') {
-    query += ` AND EXISTS (SELECT 1 FROM transactions t WHERE t.customer_id = customer_passes.customer_id AND t.created_at < now() - interval '30 days')
-               AND NOT EXISTS (SELECT 1 FROM transactions t WHERE t.customer_id = customer_passes.customer_id AND t.created_at >= now() - interval '30 days')`;
+    query += ` AND EXISTS (SELECT 1 FROM transactions t WHERE t.customer_id = p.customer_id AND t.created_at < now() - interval '30 days')
+               AND NOT EXISTS (SELECT 1 FROM transactions t WHERE t.customer_id = p.customer_id AND t.created_at >= now() - interval '30 days')`;
   } else if (target === 'inactive_60') {
-    query += ` AND EXISTS (SELECT 1 FROM transactions t WHERE t.customer_id = customer_passes.customer_id AND t.created_at < now() - interval '60 days')
-               AND NOT EXISTS (SELECT 1 FROM transactions t WHERE t.customer_id = customer_passes.customer_id AND t.created_at >= now() - interval '60 days')`;
+    query += ` AND EXISTS (SELECT 1 FROM transactions t WHERE t.customer_id = p.customer_id AND t.created_at < now() - interval '60 days')
+               AND NOT EXISTS (SELECT 1 FROM transactions t WHERE t.customer_id = p.customer_id AND t.created_at >= now() - interval '60 days')`;
   } else if (target === 'zero_visits') {
-    query += ` AND NOT EXISTS (SELECT 1 FROM transactions t WHERE t.customer_id = customer_passes.customer_id AND t.type = 'purchase')`;
+    query += ` AND NOT EXISTS (SELECT 1 FROM transactions t WHERE t.customer_id = p.customer_id AND t.type = 'purchase')`;
   }
   
-  query += ' RETURNING id, customer_id';
-  
-  const passes = await db.query(query, [message, req.auth.tid]);
-  for (const pass of passes.rows) {
-     await db.query(`INSERT INTO notifications (tenant_id, customer_id, pass_id, type, message, status) VALUES ($1,$2,$3,'marketing',$4,'simulated')`, [req.auth.tid, pass.customer_id, pass.id, message]);
+  const passes = await db.query(query, [req.auth.tid]);
+  for (const row of passes.rows) {
+     const ctx = await loyalty.loadPassContext(row.id);
+     if (ctx) await loyalty.notifyAndRefresh(ctx, message, 'marketing').catch(e => console.error(e));
   }
-  res.json({ success: true, totalSent: passes.rows.length, simulated: true });
+  res.json({ success: true, totalSent: passes.rows.length });
 });
 
 // POST /api/customers/:id/notify — envoie un message push au client
@@ -147,11 +146,12 @@ router.post('/:id/notify', required, roles('owner', 'admin', 'manager'), async (
   const { message } = req.body;
   if (!message) return res.status(400).json({ error: 'Message requis' });
   
-  const passes = await db.query('UPDATE customer_passes SET announcement = $1, last_updated = now() WHERE customer_id = $2 AND tenant_id = $3 RETURNING id', [message, req.params.id, req.auth.tid]);
-  for (const pass of passes.rows) {
-     await db.query(`INSERT INTO notifications (tenant_id, customer_id, pass_id, type, message, status) VALUES ($1,$2,$3,'marketing',$4,'simulated')`, [req.auth.tid, req.params.id, pass.id, message]);
+  const passes = await db.query('SELECT p.id FROM customer_passes p JOIN customers c ON c.id = p.customer_id WHERE c.id = $1 AND p.tenant_id = $2', [req.params.id, req.auth.tid]);
+  for (const row of passes.rows) {
+     const ctx = await loyalty.loadPassContext(row.id);
+     if (ctx) await loyalty.notifyAndRefresh(ctx, message, 'marketing').catch(e => console.error(e));
   }
-  res.json({ success: true, passesUpdated: passes.rows.length, simulated: true });
+  res.json({ success: true, passesUpdated: passes.rows.length });
 });
 
 // DELETE /api/customers/:id — anonymisation RGPD (conserve les stats agrégées)

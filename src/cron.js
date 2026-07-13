@@ -1,4 +1,5 @@
 const db = require('./db');
+const loyalty = require('./services/loyalty');
 
 async function runTasks() {
   try {
@@ -7,70 +8,74 @@ async function runTasks() {
     for (const prog of programs) {
       const auto = prog.automations || {};
       
-      // -- A. Anniversaire (envoyé une seule fois par jour) --
+      // -- A. Anniversaire (envoyé une seule fois par an) --
       if (auto.birthday?.active && auto.birthday?.msg) {
         const msg = auto.birthday.msg;
+        const currentYear = new Date().getFullYear();
+        const bdayId = `birthday_${currentYear}`;
         const bdayQuery = `
-          SELECT p.id AS pass_id, c.id AS customer_id
+          SELECT p.id
           FROM customer_passes p
           JOIN customers c ON c.id = p.customer_id
           WHERE p.program_id = $1 
+            AND c.marketing_consent = true AND c.anonymized = false
             AND c.birthday IS NOT NULL 
             AND to_char(c.birthday::date, 'MM-DD') = to_char(now(), 'MM-DD')
             AND NOT EXISTS (
               SELECT 1 FROM notifications n 
-              WHERE n.pass_id = p.id AND n.message = $2 AND n.created_at >= now() - interval '24 hours'
+              WHERE n.pass_id = p.id AND n.automation_id = $2
             )
         `;
-        const bdayPasses = await db.query(bdayQuery, [prog.id, msg]);
-        for (const pass of bdayPasses.rows) {
-          await db.query('UPDATE customer_passes SET announcement = $1, last_updated = now() WHERE id = $2', [msg, pass.pass_id]);
-          await db.query(`INSERT INTO notifications (tenant_id, customer_id, pass_id, type, message, status) VALUES ($1,$2,$3,'automation',$4,'simulated')`, [prog.tenant_id, pass.customer_id, pass.pass_id, msg]);
+        const passes = await db.query(bdayQuery, [prog.id, bdayId]);
+        for (const row of passes.rows) {
+          const ctx = await loyalty.loadPassContext(row.id);
+          if (ctx) await loyalty.notifyAndRefresh(ctx, msg, 'automation', bdayId).catch(e => console.error(e));
         }
       }
       
-      // -- B. Winback (Inactif depuis > 30 jours) --
+      // -- B. Winback (Inactif depuis > 30 jours, spam relance limité via id mois-année) --
       if (auto.winback?.active && auto.winback?.msg) {
         const msg = auto.winback.msg;
+        const currentMonthId = `winback_${new Date().getFullYear()}_${new Date().getMonth()}`;
         const winbackQuery = `
-          SELECT p.id AS pass_id, c.id AS customer_id
+          SELECT p.id
           FROM customer_passes p
           JOIN customers c ON c.id = p.customer_id
           WHERE p.program_id = $1
+            AND c.marketing_consent = true AND c.anonymized = false
             AND (SELECT max(created_at) FROM transactions t WHERE t.customer_id = c.id) < now() - interval '30 days'
             AND NOT EXISTS (
               SELECT 1 FROM notifications n 
-              WHERE n.pass_id = p.id AND n.message = $2 AND n.created_at >= now() - interval '30 days'
+              WHERE n.pass_id = p.id AND n.automation_id = $2
             )
         `;
-        const winbackPasses = await db.query(winbackQuery, [prog.id, msg]);
-        for (const pass of winbackPasses.rows) {
-          await db.query('UPDATE customer_passes SET announcement = $1, last_updated = now() WHERE id = $2', [msg, pass.pass_id]);
-          await db.query(`INSERT INTO notifications (tenant_id, customer_id, pass_id, type, message, status) VALUES ($1,$2,$3,'automation',$4,'simulated')`, [prog.tenant_id, pass.customer_id, pass.pass_id, msg]);
+        const passes = await db.query(winbackQuery, [prog.id, currentMonthId]);
+        for (const row of passes.rows) {
+          const ctx = await loyalty.loadPassContext(row.id);
+          if (ctx) await loyalty.notifyAndRefresh(ctx, msg, 'automation', currentMonthId).catch(e => console.error(e));
         }
       }
 
       // -- C. Avis Google (1h après 1er achat) --
       if (auto.review?.active && auto.review?.msg) {
         const msg = auto.review.msg;
-        // Clients dont le premier achat date d'entre 1h et 1h30 (pour être sûr de ne pas le rater et pas le renvoyer)
-        // et qui n'ont pas encore reçu ce message
+        const reviewId = 'review_1h';
         const reviewQuery = `
-          SELECT p.id AS pass_id, c.id AS customer_id
+          SELECT p.id
           FROM customer_passes p
           JOIN customers c ON c.id = p.customer_id
           WHERE p.program_id = $1
-            AND (SELECT count(*) FROM transactions t WHERE t.customer_id = c.id AND t.type = 'purchase') = 1
+            AND c.marketing_consent = true AND c.anonymized = false
             AND (SELECT min(created_at) FROM transactions t WHERE t.customer_id = c.id AND t.type = 'purchase') <= now() - interval '1 hour'
             AND NOT EXISTS (
               SELECT 1 FROM notifications n 
-              WHERE n.pass_id = p.id AND n.message = $2
+              WHERE n.pass_id = p.id AND n.automation_id = $2
             )
         `;
-        const reviewPasses = await db.query(reviewQuery, [prog.id, msg]);
-        for (const pass of reviewPasses.rows) {
-          await db.query('UPDATE customer_passes SET announcement = $1, last_updated = now() WHERE id = $2', [msg, pass.pass_id]);
-          await db.query(`INSERT INTO notifications (tenant_id, customer_id, pass_id, type, message, status) VALUES ($1,$2,$3,'automation',$4,'simulated')`, [prog.tenant_id, pass.customer_id, pass.pass_id, msg]);
+        const passes = await db.query(reviewQuery, [prog.id, reviewId]);
+        for (const row of passes.rows) {
+          const ctx = await loyalty.loadPassContext(row.id);
+          if (ctx) await loyalty.notifyAndRefresh(ctx, msg, 'automation', reviewId).catch(e => console.error(e));
         }
       }
     }
