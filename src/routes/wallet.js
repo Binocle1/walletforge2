@@ -33,19 +33,14 @@ router.get('/google/:passId', async (req, res) => {
   if (!ctx) return res.status(404).json({ error: 'Carte introuvable' });
   try {
     let url;
-    try {
-      url = await google.saveLink(ctx);
-    } catch(e) {
-      // MOCK: On simule le lien Google Wallet pour ne pas bloquer
-      url = "https://pay.google.com/gp/v/save/MOCK_TOKEN_TEST";
-    }
+    url = await google.saveLink(ctx);
     await db.query(
       `UPDATE customer_passes SET wallet_status = CASE wallet_status WHEN 'apple' THEN 'both' ELSE 'google' END
        WHERE id = $1`, [ctx.pass.id]);
     res.json({ url });
   } catch (e) {
     console.error('[gwallet]', e);
-    res.status(500).json({ error: 'Erreur de génération du lien Google Wallet' });
+    res.status(500).json({ error: 'Erreur Google Wallet: ' + (e.message || 'Inconnue') });
   }
 });
 
