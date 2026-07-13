@@ -88,8 +88,13 @@ async function ensureClass(ctx) {
     id,
     issuerName: business.name,
     programName: program.name,
-    programLogo: business.logo_url && business.logo_url.startsWith('http')
-      ? { sourceUri: { uri: business.logo_url } } : undefined,
+    programLogo: {
+      sourceUri: { 
+        uri: (business.logo_url && business.logo_url.startsWith('http')) 
+             ? business.logo_url 
+             : 'https://img.icons8.com/color/512/wallet--v1.png'
+      }
+    },
     hexBackgroundColor: (program.card_design && program.card_design.bg_color) || business.brand_color || '#1a1a2e',
     reviewStatus: 'UNDER_REVIEW',
     countryCode: business.country || 'FR',
