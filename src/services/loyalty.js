@@ -104,12 +104,14 @@ async function applyTransaction({ passId, type, amount, userId, locationId, comm
   const client = await db.pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query(
+    const txRes = await client.query(
       `INSERT INTO transactions (tenant_id, pass_id, customer_id, program_id, location_id, user_id,
                                  type, amount, points_delta, stamps_delta, comment, source)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
       [ctx.tenantId, passId, pass.customer_id, program.id, locationId || null, userId || null,
        type, amount || null, pointsDelta, stampsDelta, comment || null, source]);
+    const txId = txRes.rows[0].id;
+    ctx.txId = txId;
     const { rows } = await client.query(
       `UPDATE customer_passes
        SET stamps = greatest(0, stamps + $2),
@@ -130,7 +132,7 @@ async function applyTransaction({ passId, type, amount, userId, locationId, comm
   // Notification + rafraîchissement des wallets (best-effort, non bloquant)
   notifyAndRefresh(ctx, message, 'transactional').catch((e) => console.error('[wallet-update]', e.message));
 
-  return { pass: ctx.pass, message };
+  return { pass: ctx.pass, message, tx_id: ctx.txId };
 }
 
 async function notifyAndRefresh(ctx, message, type = 'transactional', automationId = null) {

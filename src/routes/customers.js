@@ -22,10 +22,12 @@ router.post('/public/signup/:programId', async (req, res) => {
   if (marketing_consent !== true && marketing_consent !== false) {
     return res.status(400).json({ error: 'Le consentement marketing doit être explicitement accepté ou refusé' });
   }
-  const p = await db.query('SELECT tenant_id, automations FROM loyalty_programs WHERE id = $1 AND active', [req.params.programId]);
+  const p = await db.query('SELECT tenant_id, automations, type, points_per_unit FROM loyalty_programs WHERE id = $1 AND active', [req.params.programId]);
   if (!p.rows[0]) return res.status(404).json({ error: 'Programme introuvable' });
   const tid = p.rows[0].tenant_id;
   const automations = p.rows[0].automations || {};
+  const pType = p.rows[0].type;
+  const pPts = p.rows[0].points_per_unit || 1;
 
   const consentEntry = JSON.stringify([{ marketing: !!marketing_consent, at: new Date().toISOString(), via: 'landing' }]);
   const { rows } = await db.query(
@@ -42,10 +44,29 @@ router.post('/public/signup/:programId', async (req, res) => {
 
   const pass = await loyalty.createPass(tid, rows[0].id, req.params.programId);
   
+  if (automations.welcome?.bonus) {
+    const tType = pType === 'stamps' ? 'add_stamp' : 'add_points';
+    const amount = pType === 'points' ? pPts : 0;
+    try { await loyalty.applyTransaction({ passId: pass.id, type: tType, amount, source: 'welcome_bonus', comment: 'Cadeau de bienvenue' }); } catch(e) { console.error('Bonus error', e); }
+  }
+
+  // Parrainage (MVP)
+  if (source && source !== 'qr' && source !== 'kiosk') {
+    try {
+      const friendPass = await db.query('SELECT id, customer_id FROM customer_passes WHERE serial_number = $1 AND tenant_id = $2', [source, tid]);
+      if (friendPass.rows[0]) {
+        const tType = pType === 'stamps' ? 'add_stamp' : 'add_points';
+        const amount = pType === 'points' ? pPts : 0;
+        await loyalty.applyTransaction({ passId: friendPass.rows[0].id, type: tType, amount, source: 'referral', comment: 'Parrainage' });
+      }
+    } catch (e) { console.error('Referral error', e); }
+  }
+
   if (automations.welcome?.active && automations.welcome?.msg) {
     const msg = automations.welcome.msg;
     await db.query('UPDATE customer_passes SET announcement = $1 WHERE id = $2', [msg, pass.id]);
     await db.query(`INSERT INTO notifications (tenant_id, customer_id, pass_id, type, message, status) VALUES ($1,$2,$3,'automation',$4,'simulated')`, [tid, rows[0].id, pass.id, msg]);
+    // Optionally we could notifyAndRefresh here but it's new pass so the first fetch will have it.
   }
   
   res.json({ customer_id: rows[0].id, pass_id: pass.id, serial: pass.serial_number });
@@ -88,6 +109,23 @@ router.get('/:id/export', required, roles('owner', 'admin'), async (req, res) =>
   ]);
   res.set('Content-Disposition', `attachment; filename=export-client-${req.params.id}.json`);
   res.json({ customer: c.rows[0], passes: passes.rows, transactions: tx.rows, notifications: notifs.rows });
+});
+
+// GET /api/customers/export-marketing — Export CSV pour le marketing
+router.get('/export/marketing', required, roles('owner', 'admin'), async (req, res) => {
+  const { rows } = await db.query(
+    `SELECT c.first_name, c.last_name, c.email, c.phone, c.birthday, p.stamps, p.points
+     FROM customers c
+     LEFT JOIN customer_passes p ON p.customer_id = c.id
+     WHERE c.tenant_id = $1 AND c.marketing_consent = true AND c.anonymized = false`, [req.auth.tid]);
+  
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename="marketing-optin.csv"');
+  let csv = 'Prénom,Nom,Email,Téléphone,Date de naissance,Tampons,Points\n';
+  rows.forEach(r => {
+    csv += `"${r.first_name}","${r.last_name||''}","${r.email||''}","${r.phone||''}","${r.birthday||''}","${r.stamps||0}","${r.points||0}"\n`;
+  });
+  res.send(csv);
 });
 
 // GET /api/customers/:id — détail du client pour la fiche client

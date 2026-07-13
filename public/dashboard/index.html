@@ -147,8 +147,9 @@ td{padding:10px;border-bottom:1px solid var(--line)}
       <div class="row" style="justify-content:space-between;margin-bottom:18px">
         <h1>Clients</h1>
         <div class="row">
+          <button class="btn ghost" style="margin-right:8px" onclick="window.open(API + '/customers/export/marketing?token=' + TOKEN, '_blank')">Export Marketing (CSV)</button>
           <button class="btn amber" onclick="openModal('mNotifyAll')">Notifier tous les clients</button>
-          <input id="custSearch" placeholder="Rechercher…" style="max-width:260px" oninput="loadCustomers()">
+          <input id="custSearch" placeholder="Rechercher…" style="max-width:260px;margin-left:8px" oninput="loadCustomers()">
         </div>
       </div>
       <div class="card" style="overflow-x:auto"><table id="custTable">
@@ -186,6 +187,14 @@ td{padding:10px;border-bottom:1px solid var(--line)}
           <h2 style="margin-bottom:14px">🏆 Top 5 Meilleurs Clients</h2>
           <table id="stTopCust" style="font-size:13px">
             <thead><tr><th>Client</th><th>Dépensé</th><th>Tampons</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        
+        <div class="card" style="flex:1;min-width:250px">
+          <h2 style="margin-bottom:14px">💼 Activité Vendeurs (30j)</h2>
+          <table id="stTopVendors" style="font-size:13px">
+            <thead><tr><th>Vendeur</th><th>Actions</th><th>CA / Tampons</th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -290,7 +299,11 @@ td{padding:10px;border-bottom:1px solid var(--line)}
   <p style="color:var(--muted);font-size:14px;margin-bottom:14px">Imprime ce QR et pose-le en caisse. Tes clients le scannent pour s'inscrire.</p>
   <img id="qrImg" style="width:280px;max-width:100%;border:1px solid var(--line);border-radius:12px">
   <p style="font-size:13px;margin-top:10px"><a id="qrLink" target="_blank"></a></p>
-  <button class="btn ghost" style="margin-top:14px" onclick="closeModal('mQr')">Fermer</button>
+  <div class="row" style="margin-top:18px; justify-content:center; gap:10px">
+    <button class="btn amber" id="btnKiosk">📱 Lancer le Kiosque</button>
+    <button class="btn ghost" id="btnPdf">📄 Télécharger Chevalet (PDF)</button>
+  </div>
+  <button class="btn ghost" style="margin-top:14px; width:100%" onclick="closeModal('mQr')">Fermer</button>
 </div></div>
 
 <!-- ---- modal fiche client ---- -->
@@ -364,7 +377,8 @@ td{padding:10px;border-bottom:1px solid var(--line)}
     <h3>👋 Bienvenue</h3>
     <p style="font-size:13px;color:var(--muted);margin-bottom:8px">Envoyé juste après l'inscription (installation de la carte).</p>
     <label><input type="checkbox" id="maWelcomeOn"> Activer</label>
-    <input id="maWelcomeMsg" placeholder="Bienvenue chez nous !">
+    <input id="maWelcomeMsg" placeholder="Bienvenue chez nous !" style="margin-bottom:8px">
+    <label><input type="checkbox" id="maWelcomeBonus"> Offrir 1 tampon / unité bonus à l'inscription</label>
   </div>
   
   <div class="card punch" style="margin-bottom:12px;padding:16px">
@@ -472,12 +486,16 @@ function go(s) {
 }
 function openModal(id){document.getElementById(id).classList.add('on')}
 function closeModal(id){document.getElementById(id).classList.remove('on')}
+window.addEventListener('click', (e) => {
+  if (e.target.classList.contains('modal')) e.target.classList.remove('on');
+});
 
 // ---------- home ----------
 async function loadHome() {
   const s = await api('/stats');
   document.getElementById('statCards').innerHTML = [
     ['Clients', s.total_customers], ['Nouveaux (30j)', s.new_customers_30d],
+    ['Taux de retour', (s.return_rate ?? 0) + ' %'], ['Panier moyen', (s.avg_basket ?? 0) + ' €'],
     ['Cartes Apple', s.apple_installs], ['Cartes Google', s.google_installs],
     ['Transactions', s.total_transactions], ['CA déclaré', Number(s.total_amount).toFixed(0) + ' €'],
     ['Notifications', s.notifications_sent], ['Non installées', s.not_installed],
@@ -529,6 +547,10 @@ async function showQr(id, name) {
   document.getElementById('qrTitle').textContent = name;
   const link = location.origin + '/join/' + id;
   const a = document.getElementById('qrLink'); a.href = link; a.textContent = link;
+  
+  document.getElementById('btnKiosk').onclick = () => window.open(link + '?mode=kiosk', '_blank');
+  document.getElementById('btnPdf').onclick = () => window.open(API + '/programs/' + id + '/chevalet?token=' + TOKEN, '_blank');
+
   openModal('mQr');
 }
 
@@ -541,6 +563,7 @@ async function editAutomations(id, name) {
     const auto = p.automations || {};
     document.getElementById('maWelcomeOn').checked = !!auto.welcome?.active;
     document.getElementById('maWelcomeMsg').value = auto.welcome?.msg || '';
+    document.getElementById('maWelcomeBonus').checked = !!auto.welcome?.bonus;
     document.getElementById('maBdayOn').checked = !!auto.birthday?.active;
     document.getElementById('maBdayMsg').value = auto.birthday?.msg || '';
     document.getElementById('maWinbackOn').checked = !!auto.winback?.active;
@@ -554,7 +577,11 @@ async function editAutomations(id, name) {
 async function saveAutomations() {
   try {
     const automations = {
-      welcome: { active: document.getElementById('maWelcomeOn').checked, msg: document.getElementById('maWelcomeMsg').value },
+      welcome: { 
+        active: document.getElementById('maWelcomeOn').checked, 
+        msg: document.getElementById('maWelcomeMsg').value,
+        bonus: document.getElementById('maWelcomeBonus').checked
+      },
       birthday: { active: document.getElementById('maBdayOn').checked, msg: document.getElementById('maBdayMsg').value },
       winback: { active: document.getElementById('maWinbackOn').checked, msg: document.getElementById('maWinbackMsg').value },
       review: { active: document.getElementById('maReviewOn').checked, msg: document.getElementById('maReviewMsg').value },
@@ -676,11 +703,21 @@ async function loadStats() {
   document.getElementById('stWallets').textContent = (s.apple_installs||0) + ' / ' + (s.google_installs||0) + ' / ' + (s.not_installed||0);
   
   // Tableau Top 5
-  document.querySelector('#stTopCust tbody').innerHTML = (s.top_customers || []).map(c => `<tr>
-    <td><b>${esc(c.first_name)}</b> ${esc(c.last_name || '')}</td>
-    <td style="color:var(--pine);font-weight:bold">${Number(c.spent||0).toFixed(0)} €</td>
-    <td>${c.stamps||0}</td>
-  </tr>`).join('') || '<tr><td colspan="3" style="color:var(--muted)">Pas de données</td></tr>';
+  document.querySelector('#stTopCust tbody').innerHTML = (s.top_customers || []).map(c => `
+    <tr>
+      <td><b>${esc(c.first_name)} ${esc(c.last_name || '')}</b></td>
+      <td>${Number(c.spent).toFixed(0)} €</td>
+      <td>${c.stamps} t.</td>
+    </tr>
+  `).join('') || '<tr><td colspan="3">Aucun client</td></tr>';
+
+  document.querySelector('#stTopVendors tbody').innerHTML = (s.vendor_stats || []).map(v => `
+    <tr>
+      <td><b>${esc(v.full_name || v.username)}</b></td>
+      <td>${v.tx_count}</td>
+      <td>${v.total_amount > 0 ? Number(v.total_amount).toFixed(0) + ' €' : ''} ${v.total_stamps > 0 ? `(${v.total_stamps} t.)` : ''}</td>
+    </tr>
+  `).join('') || '<tr><td colspan="3">Aucune activité</td></tr>';
 
   // Graphique
   const chart = document.getElementById('stChart');

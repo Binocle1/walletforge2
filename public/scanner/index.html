@@ -35,11 +35,20 @@ button{font-family:Sora;font-weight:600;cursor:pointer;border:none;border-radius
 .amountRow input{margin:0;flex:1;border:1px solid var(--line)}
 .amountRow button{padding:0 18px;background:var(--pine);color:#fff}
 .toastS{position:fixed;bottom:18px;left:50%;transform:translateX(-50%) translateY(80px);background:#fff;color:var(--ink);
-  padding:14px 20px;border-radius:14px;font-weight:600;transition:.3s;max-width:90%;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.4)}
+  padding:14px 20px;border-radius:14px;font-weight:600;transition:.3s;width:90%;max-width:400px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.4);
+  display:flex;justify-content:space-between;align-items:center;gap:10px}
 .toastS.show{transform:translateX(-50%) translateY(0)}
 .recent{font-size:12.5px;color:var(--muted);margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
 .topbar{display:flex;justify-content:space-between;align-items:center}
 .topbar small{color:#7fa094}
+.numpad{position:fixed;inset:0;background:var(--ink);z-index:99;display:none;flex-direction:column;padding:20px}
+.numpad.on{display:flex}
+.np-val{font-size:48px;font-family:Sora;text-align:center;margin:40px 0;height:60px;line-height:60px}
+.np-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;flex:1}
+.np-grid button{background:#1a332d;color:#fff;font-size:28px;border-radius:16px;padding:20px 0}
+.np-grid button:active{background:#234a41}
+.np-ok{background:var(--ok)!important;color:#fff}
+.np-cancel{background:transparent!important;border:2px solid #1a332d!important;color:var(--muted)!important}
 </style>
 </head>
 <body>
@@ -82,7 +91,23 @@ button{font-family:Sora;font-weight:600;cursor:pointer;border:none;border-radius
   </div>
 </div>
 
-<div class="toastS" id="toastS"></div>
+<!-- Numpad -->
+<div class="numpad" id="numpad">
+  <div class="np-val" id="npVal">0.00 €</div>
+  <div class="np-grid">
+    <button onclick="np('1')">1</button><button onclick="np('2')">2</button><button onclick="np('3')">3</button>
+    <button onclick="np('4')">4</button><button onclick="np('5')">5</button><button onclick="np('6')">6</button>
+    <button onclick="np('7')">7</button><button onclick="np('8')">8</button><button onclick="np('9')">9</button>
+    <button class="np-cancel" onclick="npCancel()">Annuler</button>
+    <button onclick="np('0')">0</button>
+    <button class="np-ok" onclick="npOk()">OK</button>
+  </div>
+</div>
+
+<div class="toastS" id="toastS">
+  <span id="toastMsg"></span>
+  <button id="toastUndoBtn" class="hide" style="padding:6px 12px;background:#c0392b;color:#fff;font-size:13px" onclick="undoTx()">Annuler</button>
+</div>
 
 <script>
 let TOKEN = localStorage.getItem('wf_scan_token');
@@ -90,6 +115,23 @@ let current = null;  // {pass_id, type, ...}
 let scanner = null;
 
 async function api(path, opts = {}) {
+  if (!navigator.onLine) {
+    if (path === '/transactions' && opts.method === 'POST') {
+      const q = JSON.parse(localStorage.getItem('wf_queue') || '[]');
+      const offline_id = 'off_' + Date.now();
+      opts.body.offline_id = offline_id;
+      q.push(opts.body);
+      localStorage.setItem('wf_queue', JSON.stringify(q));
+      return { ok: true, tx_id: offline_id, message: 'Hors-ligne : action sauvegardée', pass: { stamps: current.stamps, points: current.points, rewards_available: current.rewards_available } };
+    }
+    if (path.startsWith('/transactions/') && opts.method === 'DELETE') {
+      const txId = path.split('/').pop();
+      let q = JSON.parse(localStorage.getItem('wf_queue') || '[]');
+      q = q.filter(t => t.offline_id !== txId);
+      localStorage.setItem('wf_queue', JSON.stringify(q));
+      return { ok: true };
+    }
+  }
   const res = await fetch('/api' + path, {
     ...opts,
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + TOKEN },
@@ -99,15 +141,43 @@ async function api(path, opts = {}) {
   if (!res.ok) throw new Error(data.error || 'Erreur');
   return data;
 }
-function toast(msg, err) {
-  const t = document.getElementById('toastS');
-  t.textContent = msg; t.style.color = err ? 'var(--danger)' : 'var(--ink)';
-  t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2800);
+
+window.addEventListener('online', syncQueue);
+async function syncQueue() {
+  const q = JSON.parse(localStorage.getItem('wf_queue') || '[]');
+  if (!q.length) return;
+  toast('Synchronisation hors-ligne...');
+  for (const tx of q) {
+    const body = { ...tx };
+    delete body.offline_id;
+    await fetch('/api/transactions', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + TOKEN }, body: JSON.stringify(body) }).catch(()=>{});
+  }
+  localStorage.removeItem('wf_queue');
+  toast(`${q.length} action(s) synchronisée(s) !`);
 }
-const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
 function show(id) {
   ['pLogin', 'pScan', 'pProfile'].forEach(p => document.getElementById(p).classList.toggle('hide', p !== id));
 }
+
+function toast(msg, err = false, txId = null) {
+  const t = document.getElementById('toastS');
+  document.getElementById('toastMsg').textContent = msg;
+  const undoBtn = document.getElementById('toastUndoBtn');
+  if (txId) {
+    undoBtn.classList.remove('hide');
+    undoBtn.dataset.tx = txId;
+  } else {
+    undoBtn.classList.add('hide');
+  }
+  t.style.background = err ? 'var(--danger)' : '#fff';
+  t.style.color = err ? '#fff' : 'var(--ink)';
+  t.classList.add('show'); 
+  clearTimeout(t.timer);
+  t.timer = setTimeout(() => t.classList.remove('show'), 6000);
+}
+
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 async function login() {
   const urlParams = new URLSearchParams(window.location.search);
@@ -186,15 +256,36 @@ function renderProfile() {
 }
 
 let pendingType = 'purchase';
-function askAmount() { pendingType = 'purchase'; document.getElementById('amountRow').classList.add('on'); document.getElementById('amount').focus(); }
-function askPoints() { pendingType = 'remove_points'; document.getElementById('amountRow').classList.add('on'); document.getElementById('amount').focus(); }
-function confirmPurchase() { tx(pendingType, Number(document.getElementById('amount').value || 0)); }
+let npValue = '';
+function askAmount() { 
+  pendingType = 'purchase'; 
+  npValue = ''; 
+  document.getElementById('npVal').textContent = '0.00 €';
+  document.getElementById('numpad').classList.add('on'); 
+}
+function askPoints() { 
+  pendingType = 'remove_points'; 
+  npValue = ''; 
+  document.getElementById('npVal').textContent = '0.00 pts';
+  document.getElementById('numpad').classList.add('on'); 
+}
+function np(digit) {
+  if (npValue.length > 5) return;
+  npValue += digit;
+  const val = (Number(npValue) / 100).toFixed(2);
+  document.getElementById('npVal').textContent = val + (pendingType === 'purchase' ? ' €' : ' pts');
+}
+function npCancel() { document.getElementById('numpad').classList.remove('on'); }
+function npOk() { 
+  document.getElementById('numpad').classList.remove('on');
+  tx(pendingType, Number(npValue) / 100); 
+}
 
 let returnTimer = null;
 async function tx(type, amount) {
   try {
     const r = await api('/transactions', { method: 'POST', body: { pass_id: current.pass_id, type, amount } });
-    toast(r.message);
+    toast(r.message, false, r.tx_id);
     current.stamps = r.pass.stamps; current.points = r.pass.points; current.rewards_available = r.pass.rewards_available;
     renderProfile();
     
@@ -203,7 +294,20 @@ async function tx(type, amount) {
   } catch (e) { toast(e.message, 1); }
 }
 
-if (TOKEN) startScan();
+async function undoTx() {
+  const txId = document.getElementById('toastUndoBtn').dataset.tx;
+  if (!txId) return;
+  try {
+    document.getElementById('toastS').classList.remove('show');
+    clearTimeout(returnTimer);
+    const r = await api('/transactions/' + txId, { method: 'DELETE' });
+    toast('Action annulée avec succès', false);
+    // Recharge le profil
+    openSerial(current.serial_number);
+  } catch (e) { toast(e.message, 1); }
+}
+
+if (TOKEN) { startScan(); syncQueue(); }
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
 </body>

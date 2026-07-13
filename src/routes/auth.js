@@ -107,6 +107,23 @@ router.get('/users', required, roles('owner', 'admin'), async (req, res) => {
   res.json(rows);
 });
 
+// POST /api/auth/invite — Ajouter un vendeur/membre
+router.post('/invite', required, roles('owner', 'admin'), async (req, res) => {
+  const { full_name, username, password, role } = req.body;
+  if (!username || !password || !role) return res.status(400).json({ error: 'Username, password et role requis' });
+  const hash = await bcrypt.hash(password, 10);
+  try {
+    const { rows } = await db.query(
+      `INSERT INTO users (tenant_id, full_name, username, password_hash, role)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id, username, full_name, role`,
+      [req.auth.tid, full_name || null, username, hash, role]);
+    res.json(rows[0]);
+  } catch (e) {
+    if (e.code === '23505') return res.status(400).json({ error: 'Cet identifiant est déjà utilisé' });
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
 // DELETE /api/auth/users/:id — Supprimer un membre
 router.delete('/users/:id', required, roles('owner', 'admin'), async (req, res) => {
   if (req.params.id === req.auth.uid) return res.status(400).json({ error: 'Vous ne pouvez pas vous supprimer vous-même' });

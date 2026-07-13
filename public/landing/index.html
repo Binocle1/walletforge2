@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Rejoindre le programme de fidélité</title>
+<title>WalletForge</title>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#16453a;--fg:#ffffff;--mist:#eef4f1;--line:#d8e4de;--text:#22332e;--muted:#6b7f78;--amber:#c77f14}
@@ -26,7 +26,8 @@ button{width:100%;margin-top:18px;padding:14px;border:none;border-radius:12px;fo
 .walletBtns{display:none;text-align:center}
 .walletBtns.on{display:block}
 .wbtn{display:flex;align-items:center;justify-content:center;gap:10px;background:#000;color:#fff;text-decoration:none;
-  padding:14px;border-radius:12px;margin-top:12px;font-weight:600;font-size:15px}
+  padding:14px;border-radius:12px;margin-top:12px;font-weight:600;font-size:15px; cursor:pointer}
+.secondary{background:none;border:none;color:var(--muted);font-size:14px;text-decoration:underline;margin-top:16px;cursor:pointer}
 .err{color:#c0392b;font-size:14px;margin-top:12px;display:none}
 .done h2{font-family:Sora;font-size:19px;margin-bottom:6px}
 small.legal{display:block;margin-top:14px;color:var(--muted);font-size:11.5px;text-align:center}
@@ -40,18 +41,24 @@ small.legal{display:block;margin-top:14px;color:var(--muted);font-size:11.5px;te
   </div>
 
   <div class="card" id="formCard">
-    <label>Prénom *</label><input id="fFirst" autocomplete="given-name">
-    <label>Nom</label><input id="fLast" autocomplete="family-name">
-    <label>Email *</label><input id="fEmail" type="email" autocomplete="email">
-    <label>Téléphone</label><input id="fPhone" type="tel" autocomplete="tel">
-    <label>Date d'anniversaire (optionnel — pour un cadeau 🎂)</label><input id="fBday" type="date">
+    <label id="lblFirst">Prénom *</label><input id="fFirst" autocomplete="given-name">
+    <label id="lblLast">Nom</label><input id="fLast" autocomplete="family-name">
+    <label id="lblEmail">Email *</label><input id="fEmail" type="email" autocomplete="email">
+    
+    <button id="toggleOptBtn" class="secondary" style="margin-top:8px" onclick="toggleOpt()">+ Ajouter des informations optionnelles</button>
+    
+    <div id="optFields" style="display:none">
+      <label id="lblPhone">Téléphone</label><input id="fPhone" type="tel" autocomplete="tel">
+      <label id="lblBday">Date d'anniversaire (pour un cadeau 🎂)</label><input id="fBday" type="date">
+    </div>
+    
     <div class="consent">
       <input type="checkbox" id="cTerms">
-      <span>J'accepte les <a href="#" onclick="return false">conditions du programme</a> et la <a href="#" onclick="return false">politique de confidentialité</a>. *</span>
+      <span id="txtTerms">J'accepte les <a href="#" onclick="return false">conditions du programme</a> et la <a href="#" onclick="return false">politique de confidentialité</a>. *</span>
     </div>
     <div class="consent">
       <input type="checkbox" id="cMkt">
-      <span>J'accepte de recevoir des offres et notifications de ce commerce (tu peux te désinscrire à tout moment).</span>
+      <span id="txtMkt">J'accepte de recevoir des offres de la part de {biz}.</span>
     </div>
     <button class="go" id="goBtn" onclick="signup()">Obtenir ma carte</button>
     <p class="err" id="err"></p>
@@ -59,13 +66,25 @@ small.legal{display:block;margin-top:14px;color:var(--muted);font-size:11.5px;te
 
   <div class="card walletBtns" id="walletCard">
     <div class="done">
-      <h2>🎉 Ta carte est prête !</h2>
-      <p style="color:var(--muted);font-size:14px">Ajoute-la à ton téléphone en un clic :</p>
+      <h2 id="txtSuccessTitle">🎉 Ta carte est prête !</h2>
+      <p id="txtSuccessDesc" style="color:var(--muted);font-size:14px;margin-bottom:16px">Ajoute-la à ton téléphone en un clic :</p>
     </div>
-    <a class="wbtn" id="appleBtn"> Ajouter à Apple Wallet</a>
-    <a class="wbtn" id="googleBtn" style="background:#fff;color:#000;border:1.5px solid #000">G&nbsp; Ajouter à Google Wallet</a>
+    <div id="appleWrapper">
+      <a class="wbtn" id="appleBtn"> Ajouter à Apple Wallet</a>
+    </div>
+    <div id="googleWrapper">
+      <button class="wbtn" id="googleBtn" style="background:#fff;color:#000;border:1.5px solid #000;width:100%">G&nbsp; Ajouter à Google Wallet</button>
+    </div>
+    <button class="secondary" onclick="showBothWallets()" id="btnOtherPhone">J'ai un autre téléphone</button>
+    
+    <div id="qrSecours" style="margin-top:24px;display:none;text-align:center">
+      <p id="txtQR" style="font-size:13px;color:var(--muted);margin-bottom:8px">Ou présentez ce code en caisse :</p>
+      <img id="qrImg" src="" style="width:150px;height:150px;border-radius:12px;border:1px solid var(--line)">
+    </div>
     <p class="err" id="werr"></p>
   </div>
+
+  <small class="legal" id="txtLegal">Tes données sont utilisées uniquement pour le programme de fidélité de ce commerce (RGPD).</small>
 
   <small class="legal">Tes données sont utilisées uniquement pour le programme de fidélité de ce commerce (RGPD).</small>
 </div>
@@ -74,15 +93,68 @@ small.legal{display:block;margin-top:14px;color:var(--muted);font-size:11.5px;te
 const programId = location.pathname.split('/').pop();
 let passId = null;
 
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+const i18n = {
+  fr: {
+    first: 'Prénom *', last: 'Nom', email: 'Email *', phone: 'Téléphone', bday: 'Date d\'anniversaire (pour un cadeau 🎂)',
+    addOpt: '+ Ajouter des informations optionnelles', terms: 'J\'accepte les conditions du programme. *',
+    mkt: 'J\'accepte de recevoir des offres de la part de {biz}.', get: 'Obtenir ma carte', errTerms: 'Merci d\'accepter les conditions pour continuer.',
+    successTitle: '🎉 Ta carte est prête !', successDesc: 'Ajoute-la à ton téléphone en un clic :', otherPhone: 'J\'ai un autre téléphone', qrSecours: 'Ou présentez ce code en caisse :', legal: 'Données protégées selon le RGPD.'
+  },
+  en: {
+    first: 'First Name *', last: 'Last Name', email: 'Email *', phone: 'Phone', bday: 'Birthday (for a gift 🎂)',
+    addOpt: '+ Add optional info', terms: 'I accept the program terms. *',
+    mkt: 'I agree to receive offers from {biz}.', get: 'Get my card', errTerms: 'Please accept the terms to continue.',
+    successTitle: '🎉 Your card is ready!', successDesc: 'Add it to your phone in one click:', otherPhone: 'I have a different phone', qrSecours: 'Or show this code at the store:', legal: 'Data protected according to GDPR.'
+  },
+  he: {
+    first: 'שם פרטי *', last: 'שם משפחה', email: 'אימייל *', phone: 'טלפון', bday: 'תאריך לידה (למתנה 🎂)',
+    addOpt: '+ הוסף מידע אופציונלי', terms: 'אני מסכים לתנאי התוכנית. *',
+    mkt: 'אני מסכים לקבל מבצעים מ- {biz}.', get: 'קבל את הכרטיס שלי', errTerms: 'נא לאשר את התנאים כדי להמשיך.',
+    successTitle: '🎉 הכרטיס שלך מוכן!', successDesc: 'הוסף אותו לטלפון שלך בלחיצה אחת:', otherPhone: 'יש לי טלפון אחר', qrSecours: 'או הצג את הקוד הזה בקופה:', legal: 'הנתונים מוגנים בהתאם ל-GDPR.'
+  }
+};
+let lang = navigator.language.slice(0,2);
+if(!i18n[lang]) lang = 'fr';
+const t = i18n[lang];
+if(lang==='he') document.body.dir = 'rtl';
+
+function toggleOpt() {
+  document.getElementById('optFields').style.display = 'block';
+  document.getElementById('toggleOptBtn').style.display = 'none';
+}
+function showBothWallets() {
+  document.getElementById('appleWrapper').style.display = 'block';
+  document.getElementById('googleWrapper').style.display = 'block';
+  document.getElementById('btnOtherPhone').style.display = 'none';
+}
+
 async function load() {
   const res = await fetch('/api/customers/public/program/' + programId);
-  if (!res.ok) { document.getElementById('bizName').textContent = 'Programme introuvable'; return; }
+  if (!res.ok) { document.getElementById('bizName').textContent = 'Introuvable'; return; }
   const p = await res.json();
+  
+  // Appliquer traductions
+  document.getElementById('lblFirst').textContent = t.first;
+  document.getElementById('lblLast').textContent = t.last;
+  document.getElementById('lblEmail').textContent = t.email;
+  document.getElementById('lblPhone').textContent = t.phone;
+  document.getElementById('lblBday').textContent = t.bday;
+  document.getElementById('toggleOptBtn').textContent = t.addOpt;
+  document.getElementById('txtTerms').innerHTML = t.terms;
+  document.getElementById('txtMkt').textContent = t.mkt.replace('{biz}', p.business_name);
+  document.getElementById('goBtn').textContent = t.get;
+  document.getElementById('txtSuccessTitle').textContent = t.successTitle;
+  document.getElementById('txtSuccessDesc').textContent = t.successDesc;
+  document.getElementById('btnOtherPhone').textContent = t.otherPhone;
+  document.getElementById('txtQR').textContent = t.qrSecours;
+  document.getElementById('txtLegal').textContent = t.legal;
+
   document.getElementById('bizName').textContent = p.business_name;
   document.getElementById('progDesc').textContent =
     p.type === 'stamps'
-      ? `${p.name} — ${p.stamps_required} tampons et c'est gagné : ${p.reward_label || 'récompense offerte'} !`
-      : `${p.name} — cumule des points à chaque achat (${p.points_for_reward} pts → ${p.reward_label || 'récompense'}).`;
+      ? `${p.name} — ${p.stamps_required} tampons = ${p.reward_label || 'récompense'}`
+      : `${p.name} — ${p.points_for_reward} pts = ${p.reward_label || 'récompense'}`;
   const d = p.card_design || {};
   const prev = document.getElementById('preview');
   prev.style.background = d.bg_color || p.brand_color || '#16453a';
@@ -92,10 +164,10 @@ async function load() {
 async function signup() {
   const err = document.getElementById('err'); err.style.display = 'none';
   if (!document.getElementById('cTerms').checked) {
-    err.textContent = 'Merci d\'accepter les conditions du programme pour continuer.';
+    err.textContent = t.errTerms;
     err.style.display = 'block'; return;
   }
-  const btn = document.getElementById('goBtn'); btn.disabled = true; btn.textContent = 'Création…';
+  const btn = document.getElementById('goBtn'); btn.disabled = true; btn.style.opacity = '0.7';
   try {
     const res = await fetch('/api/customers/public/signup/' + programId, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -112,6 +184,37 @@ async function signup() {
     passId = data.pass_id;
     document.getElementById('formCard').style.display = 'none';
     document.getElementById('walletCard').classList.add('on');
+    
+    const mode = new URLSearchParams(location.search).get('mode');
+    if (mode === 'kiosk') {
+      document.getElementById('appleWrapper').style.display = 'none';
+      document.getElementById('googleWrapper').style.display = 'none';
+      document.getElementById('btnOtherPhone').style.display = 'none';
+      document.getElementById('txtSuccessTitle').textContent = 'Scannez ce QR Code avec votre téléphone';
+      document.getElementById('txtSuccessDesc').textContent = 'Pour récupérer votre carte de fidélité';
+      if (data.serial) {
+        document.getElementById('qrImg').src = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${data.serial}`;
+        document.getElementById('qrImg').style.width = '250px';
+        document.getElementById('qrImg').style.height = '250px';
+        document.getElementById('qrSecours').style.display = 'block';
+        document.getElementById('txtQR').style.display = 'none';
+      }
+      setTimeout(() => location.reload(), 15000);
+    } else {
+      // Détection OS (Normal)
+      if (isIOS) {
+        document.getElementById('googleWrapper').style.display = 'none';
+      } else {
+        document.getElementById('appleWrapper').style.display = 'none';
+      }
+      
+      // QR de secours
+      if (data.serial) {
+        document.getElementById('qrImg').src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${data.serial}`;
+        document.getElementById('qrSecours').style.display = 'block';
+      }
+    }
+
     document.getElementById('appleBtn').href = '/api/wallet/apple/' + passId + '.pkpass';
     document.getElementById('googleBtn').onclick = async (e) => {
       e.preventDefault();
@@ -122,7 +225,7 @@ async function signup() {
     };
   } catch (e) {
     err.textContent = e.message; err.style.display = 'block';
-    btn.disabled = false; btn.textContent = 'Obtenir ma carte';
+    btn.disabled = false; btn.style.opacity = '1';
   }
 }
 load();

@@ -13,7 +13,7 @@ function sign(user) {
 // Middleware : requiert un JWT valide. req.auth = {uid, tid, role, loc}
 function required(req, res, next) {
   const h = req.headers.authorization || '';
-  const token = h.startsWith('Bearer ') ? h.slice(7) : null;
+  const token = h.startsWith('Bearer ') ? h.slice(7) : req.query.token;
   if (!token) return res.status(401).json({ error: 'Authentification requise' });
   try {
     req.auth = jwt.verify(token, SECRET);
