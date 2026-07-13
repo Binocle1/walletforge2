@@ -110,13 +110,20 @@ function show(id) {
 }
 
 async function login() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const tenantId = urlParams.get('t');
+  
   try {
-    const res = await fetch('/api/auth/login', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: sEmail.value, password: sPass.value }) });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error);
-    TOKEN = data.token; localStorage.setItem('wf_scan_token', TOKEN);
+    const r = await api('/auth/login', { 
+      method: 'POST', 
+      body: { 
+        email: document.getElementById('sEmail').value, 
+        password: document.getElementById('sPass').value,
+        tenant_id: tenantId 
+      } 
+    });
+    TOKEN = r.token; localStorage.setItem('wf_scan_token', TOKEN);
+    document.getElementById('sPass').value = '';
     startScan();
   } catch (e) { toast(e.message, 1); }
 }

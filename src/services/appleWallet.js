@@ -57,7 +57,11 @@ function buildPassJson({ pass, program, business, customer }) {
     { key: 'terms', label: 'Conditions', value: design.terms || 'Programme de fidélité — voir en boutique.' },
   ];
 
-  if (pass.announcement) {
+  const now = new Date();
+  const annExpires = pass.announcement_expires_at ? new Date(pass.announcement_expires_at) : null;
+  const isAnnouncementValid = pass.announcement && (!annExpires || annExpires > now);
+
+  if (isAnnouncementValid) {
     backFields.push({
       key: 'announcement',
       label: 'Dernier Message',

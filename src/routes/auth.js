@@ -39,14 +39,20 @@ router.post('/register', async (req, res) => {
 
 // POST /api/auth/login
 router.post('/login', bruteForceGuard, async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password, tenant_id } = req.body;
   const loginId = (email || '').toLowerCase();
   
-  // Parse username@commerce syntax if needed later, for now just match globally
-  const { rows } = await db.query('SELECT * FROM users WHERE email = $1 OR username = $1', [loginId]);
+  let query = 'SELECT * FROM users WHERE email = $1 OR username = $1';
+  const params = [loginId];
+  if (tenant_id) {
+    query += ' AND tenant_id = $2';
+    params.push(tenant_id);
+  }
+  
+  const { rows } = await db.query(query, params);
   if (rows.length > 1) {
     req.loginFail();
-    return res.status(401).json({ error: 'Identifiant ambigu. Veuillez vous connecter avec votre adresse e-mail complète.' });
+    return res.status(401).json({ error: 'Identifiant ambigu. Veuillez utiliser le lien de connexion fourni par votre gérant.' });
   }
   
   const user = rows[0];
@@ -88,7 +94,7 @@ router.post('/invite', required, roles('owner', 'admin'), async (req, res) => {
 // GET /api/auth/me
 router.get('/me', required, async (req, res) => {
   const { rows } = await db.query(
-    `SELECT u.email, u.username, u.full_name, u.role, t.plan, t.plan_limits, t.subscription_status, b.id AS business_id, b.name AS business_name
+    `SELECT u.email, u.username, u.full_name, u.role, t.id AS tenant_id, t.plan, t.plan_limits, t.subscription_status, b.id AS business_id, b.name AS business_name
      FROM users u JOIN tenants t ON t.id = u.tenant_id
      LEFT JOIN businesses b ON b.tenant_id = t.id
      WHERE u.id = $1`, [req.auth.uid]);

@@ -238,7 +238,12 @@ td{padding:10px;border-bottom:1px solid var(--line)}
           <h2>Équipe & Vendeurs</h2>
           <button class="btn sm amber" onclick="openModal('mTeam')">+ Ajouter un membre</button>
         </div>
-        <p style="color:var(--muted);font-size:13px;margin-bottom:16px">Les caissiers peuvent se connecter au scanner avec un simple nom d'utilisateur.</p>
+        <p style="color:var(--muted);font-size:13px;margin-bottom:16px">Les caissiers peuvent se connecter au scanner avec un simple nom d'utilisateur. Utilisez ce lien spécifique pour qu'ils soient reconnus.</p>
+        <div style="background:var(--bg); border:1px dashed var(--line); border-radius:8px; padding:12px; margin-bottom:16px; font-size:14px; display:flex; align-items:center; gap:8px;">
+          <span>📱 Lien vendeur :</span>
+          <input id="scannerLink" readonly style="flex:1; border:none; background:transparent; font-weight:bold" onclick="this.select()">
+          <button class="btn sm ghost" onclick="copyScannerLink()">Copier</button>
+        </div>
         <div style="overflow-x:auto"><table id="teamTable">
           <thead><tr><th>Membre</th><th>Identifiant</th><th>Rôle</th><th>Action</th></tr></thead>
           <tbody></tbody>
@@ -725,8 +730,9 @@ async function loadNotifs() {
 
 // ---------- settings ----------
 async function loadTeam() {
-  const list = await api('/auth/users');
-  document.querySelector('#teamTable tbody').innerHTML = list.map(u => `<tr>
+  const users = await api('/auth/users');
+  document.getElementById('scannerLink').value = window.location.origin + '/scanner?t=' + (me.tenant_id || '');
+  document.querySelector('#teamTable tbody').innerHTML = users.map(u => `<tr>
     <td>${esc(u.full_name)}</td>
     <td>${esc(u.username || u.email)}</td>
     <td>${esc(u.role)}</td>
@@ -747,6 +753,14 @@ async function addTeamMember() {
 async function delTeam(id) {
   if(!confirm('Supprimer ce membre ?')) return;
   try { await api('/auth/users/'+id, {method:'DELETE'}); loadTeam(); } catch(e){ toast(e.message,1); }
+}
+
+function copyScannerLink() {
+  const link = document.getElementById('scannerLink').value;
+  if (link && link.startsWith('http')) {
+    navigator.clipboard.writeText(link);
+    toast('Lien copié dans le presse-papier !');
+  }
 }
 
 async function loadBusiness() {
