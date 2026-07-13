@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta name="theme-color" content="#10231f">
+<link rel="manifest" href="manifest.json">
+<title>WalletForge Scanner</title>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+:root{--ink:#10231f;--pine:#16453a;--mist:#eef4f1;--line:#d8e4de;--text:#22332e;--muted:#6b7f78;--amber:#c77f14;--ok:#1d8a5f;--danger:#c0392b}
+*{box-sizing:border-box;margin:0}
+body{font-family:Inter,system-ui,sans-serif;background:var(--ink);color:#fff;min-height:100vh}
+.page{max-width:460px;margin:0 auto;padding:18px}
+h1,h2{font-family:Sora}
+input{width:100%;font-size:16px;padding:13px;border-radius:10px;border:none;margin-top:10px}
+button{font-family:Sora;font-weight:600;cursor:pointer;border:none;border-radius:12px}
+.big{width:100%;padding:15px;font-size:16px;margin-top:14px;background:var(--amber);color:#fff}
+.ghost{background:rgba(255,255,255,.1);color:#fff}
+#reader{border-radius:16px;overflow:hidden;margin-top:14px;background:#000}
+.hide{display:none!important}
+.profile{background:#fff;color:var(--text);border-radius:16px;padding:20px;margin-top:16px}
+.profile h2{color:var(--ink);font-size:20px}
+.balance{display:flex;gap:10px;margin:14px 0}
+.balance div{flex:1;background:var(--mist);border-radius:12px;padding:12px;text-align:center}
+.balance b{display:block;font-size:24px;font-family:Sora;color:var(--pine)}
+.balance small{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px}
+.actions button{padding:14px 8px;font-size:14.5px;border-radius:12px;background:var(--pine);color:#fff}
+.actions button.warn{background:#fff;color:var(--danger);border:1.5px solid var(--danger)}
+.actions button.gold{background:var(--amber)}
+.amountRow{display:none;gap:10px;margin-top:12px}
+.amountRow.on{display:flex}
+.amountRow input{margin:0;flex:1;border:1px solid var(--line)}
+.amountRow button{padding:0 18px;background:var(--pine);color:#fff}
+.toastS{position:fixed;bottom:18px;left:50%;transform:translateX(-50%) translateY(80px);background:#fff;color:var(--ink);
+  padding:14px 20px;border-radius:14px;font-weight:600;transition:.3s;max-width:90%;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.4)}
+.toastS.show{transform:translateX(-50%) translateY(0)}
+.recent{font-size:12.5px;color:var(--muted);margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
+.topbar{display:flex;justify-content:space-between;align-items:center}
+.topbar small{color:#7fa094}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- login -->
+  <div id="pLogin">
+    <h1 style="margin:30px 0 4px">Scanner</h1>
+    <p style="color:#7fa094;font-size:14px">Connexion vendeur / manager</p>
+    <input id="sEmail" type="email" placeholder="Email" autocomplete="email">
+    <input id="sPass" type="password" placeholder="Mot de passe" autocomplete="current-password">
+    <button class="big" onclick="login()">Se connecter</button>
+  </div>
+
+  <!-- scan -->
+  <div id="pScan" class="hide">
+    <div class="topbar">
+      <h1 style="font-size:20px">Scanner une carte</h1>
+      <button class="ghost" style="padding:8px 14px" onclick="logout()">Quitter</button>
+    </div>
+    <div id="reader"></div>
+    <input id="manual" placeholder="Ou recherche : nom, email, téléphone…" style="border:none" oninput="search(this.value)">
+    <div id="results"></div>
+  </div>
+
+  <!-- profil client -->
+  <div id="pProfile" class="hide">
+    <button class="ghost" style="padding:9px 16px" onclick="backToScan()">← Scanner</button>
+    <div class="profile">
+      <h2 id="cName"></h2>
+      <p style="color:var(--muted);font-size:13.5px" id="cProg"></p>
+      <div class="balance" id="cBalance"></div>
+      <div class="actions" id="cActions"></div>
+      <div class="amountRow" id="amountRow">
+        <input id="amount" type="number" inputmode="decimal" placeholder="Montant en €">
+        <button onclick="confirmPurchase()">OK</button>
+      </div>
+      <div class="recent" id="cRecent"></div>
+    </div>
+  </div>
+</div>
+
+<div class="toastS" id="toastS"></div>
+
+<script>
+let TOKEN = localStorage.getItem('wf_scan_token');
+let current = null;  // {pass_id, type, ...}
+let scanner = null;
+
+async function api(path, opts = {}) {
+  const res = await fetch('/api' + path, {
+    ...opts,
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + TOKEN },
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Erreur');
+  return data;
+}
+function toast(msg, err) {
+  const t = document.getElementById('toastS');
+  t.textContent = msg; t.style.color = err ? 'var(--danger)' : 'var(--ink)';
+  t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2800);
+}
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function show(id) {
+  ['pLogin', 'pScan', 'pProfile'].forEach(p => document.getElementById(p).classList.toggle('hide', p !== id));
+}
+
+async function login() {
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: sEmail.value, password: sPass.value }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    TOKEN = data.token; localStorage.setItem('wf_scan_token', TOKEN);
+    startScan();
+  } catch (e) { toast(e.message, 1); }
+}
+function logout() { localStorage.removeItem('wf_scan_token'); location.reload(); }
+
+function startScan() {
+  show('pScan');
+  if (scanner) return;
+  scanner = new Html5Qrcode('reader');
+  scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 230, height: 230 } },
+    (text) => { scanner.pause(true); openSerial(text); },
+    () => {}).catch(() => {
+      document.getElementById('reader').innerHTML =
+        '<p style="padding:20px;color:#7fa094;font-size:14px">Caméra indisponible — utilise la recherche manuelle ci-dessous.</p>';
+    });
+}
+function backToScan() { show('pScan'); if (scanner) scanner.resume(); }
+
+async function search(q) {
+  if (q.length < 2) { document.getElementById('results').innerHTML = ''; return; }
+  const rows = await api('/scan-search?q=' + encodeURIComponent(q)).catch(() => []);
+  document.getElementById('results').innerHTML = rows.map(r =>
+    `<button class="ghost" style="width:100%;padding:13px;margin-top:8px;text-align:left"
+      onclick="openSerial('${r.serial_number}')">${esc(r.first_name)} ${esc(r.last_name || '')} — ${esc(r.program_name)}</button>`).join('');
+}
+
+async function openSerial(serial) {
+  try {
+    current = await api('/scan/' + encodeURIComponent(serial.trim()));
+    renderProfile();
+    show('pProfile');
+  } catch (e) { toast(e.message, 1); if (scanner) scanner.resume(); }
+}
+
+function renderProfile() {
+  const c = current;
+  document.getElementById('cName').textContent = `${c.first_name} ${c.last_name || ''}`;
+  document.getElementById('cProg').textContent = c.program_name;
+  const bal = c.type === 'stamps'
+    ? `<div><b>${c.stamps}/${c.stamps_required}</b><small>Tampons</small></div>`
+    : `<div><b>${Number(c.points)}</b><small>Points</small></div>`;
+  document.getElementById('cBalance').innerHTML = bal +
+    `<div><b>${c.rewards_available}</b><small>Récompenses</small></div>`;
+
+  const acts = [];
+  if (c.type === 'stamps') {
+    acts.push(`<button onclick="tx('purchase')">+ Achat (1 tampon)</button>`);
+    acts.push(`<button class="warn" onclick="tx('remove_stamp')">− Retirer un tampon</button>`);
+  } else {
+    acts.push(`<button onclick="askAmount()">+ Achat (montant €)</button>`);
+    acts.push(`<button class="warn" onclick="askPoints()">− Retirer des points</button>`);
+  }
+  const canRedeem = c.type === 'stamps' ? c.rewards_available > 0 : Number(c.points) >= c.points_for_reward;
+  acts.push(`<button class="gold" ${canRedeem ? '' : 'disabled style="opacity:.4"'} onclick="tx('reward_redeemed')">🎁 Utiliser la récompense</button>`);
+  document.getElementById('cActions').innerHTML = acts.join('');
+  document.getElementById('amountRow').classList.remove('on');
+
+  document.getElementById('cRecent').innerHTML = '<b>Dernières actions</b><br>' +
+    (c.recent || []).map(r => `${new Date(r.created_at).toLocaleString('fr-FR')} — ${esc(r.type)}${r.amount ? ' ' + r.amount + '€' : ''}`).join('<br>') || '';
+}
+
+let pendingType = 'purchase';
+function askAmount() { pendingType = 'purchase'; document.getElementById('amountRow').classList.add('on'); document.getElementById('amount').focus(); }
+function askPoints() { pendingType = 'remove_points'; document.getElementById('amountRow').classList.add('on'); document.getElementById('amount').focus(); }
+function confirmPurchase() { tx(pendingType, Number(document.getElementById('amount').value || 0)); }
+
+async function tx(type, amount) {
+  try {
+    const r = await api('/transactions', { method: 'POST', body: { pass_id: current.pass_id, type, amount } });
+    toast(r.message);
+    current.stamps = r.pass.stamps; current.points = r.pass.points; current.rewards_available = r.pass.rewards_available;
+    renderProfile();
+  } catch (e) { toast(e.message, 1); }
+}
+
+if (TOKEN) startScan();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>

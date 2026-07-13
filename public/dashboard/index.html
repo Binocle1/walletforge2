@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WalletForge — Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#10231f; --pine:#16453a; --pine-soft:#1d5a4b; --mist:#eef4f1; --paper:#fbfdfc;
+  --amber:#e8a33d; --amber-deep:#c77f14; --line:#d8e4de; --text:#22332e; --muted:#6b7f78;
+  --danger:#c0392b; --ok:#1d8a5f;
+}
+*{box-sizing:border-box;margin:0}
+body{font-family:Inter,system-ui,sans-serif;background:var(--mist);color:var(--text);min-height:100vh}
+h1,h2,h3{font-family:Sora,sans-serif;color:var(--ink)}
+button{font-family:inherit;cursor:pointer}
+input,select,textarea{font-family:inherit;font-size:15px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;width:100%}
+input:focus,select:focus{outline:2px solid var(--pine-soft);border-color:transparent}
+label{display:block;font-size:13px;font-weight:600;color:var(--muted);margin:12px 0 4px}
+.btn{background:var(--pine);color:#fff;border:none;padding:11px 18px;border-radius:8px;font-weight:600;font-size:15px}
+.btn:hover{background:var(--pine-soft)}
+.btn.amber{background:var(--amber-deep)}
+.btn.ghost{background:transparent;color:var(--pine);border:1px solid var(--line)}
+.btn.sm{padding:6px 12px;font-size:13px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:22px}
+/* signature : bord perforé façon carte à tampons */
+.punch{position:relative}
+.punch::before{content:"";position:absolute;top:-6px;left:16px;right:16px;height:12px;
+  background-image:radial-gradient(circle 5px, var(--mist) 5px, transparent 5px);
+  background-size:22px 12px;background-repeat:repeat-x}
+/* ---- auth ---- */
+#auth{max-width:420px;margin:8vh auto;padding:0 16px}
+#auth .card{padding:32px}
+.logo{display:flex;align-items:center;gap:10px;margin-bottom:22px}
+.logo .mark{width:38px;height:38px;border-radius:10px;background:var(--pine);color:var(--amber);
+  display:grid;place-items:center;font-family:Sora;font-weight:700;font-size:19px}
+.tabs{display:flex;gap:6px;margin-bottom:18px}
+.tabs button{flex:1;padding:9px;border:1px solid var(--line);background:#fff;border-radius:8px;font-weight:600;color:var(--muted)}
+.tabs button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+/* ---- app layout ---- */
+#app{display:none;grid-template-columns:220px 1fr;min-height:100vh}
+nav{background:var(--ink);padding:20px 14px;display:flex;flex-direction:column;gap:4px}
+nav .logo{color:#fff;padding:0 8px 14px}
+nav a{color:#b8ccc5;text-decoration:none;padding:10px 12px;border-radius:8px;font-size:14.5px;font-weight:500}
+nav a.on,nav a:hover{background:rgba(255,255,255,.08);color:#fff}
+nav .cfg{margin-top:auto;font-size:12px;color:#7fa094;padding:10px 12px;border-top:1px solid rgba(255,255,255,.1)}
+nav .cfg span{display:block;margin-top:4px}
+main{padding:28px;max-width:1100px}
+.grid{display:grid;gap:16px}
+.grid.s4{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+.stat h2{font-size:30px;margin-top:4px}
+.stat small{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em;padding:8px 10px;border-bottom:1px solid var(--line)}
+td{padding:10px;border-bottom:1px solid var(--line)}
+.pill{display:inline-block;padding:3px 9px;border-radius:20px;font-size:12px;font-weight:600}
+.pill.g{background:#e2f3ec;color:var(--ok)} .pill.a{background:#fdf1dd;color:var(--amber-deep)} .pill.n{background:#eee;color:#777}
+.toast{position:fixed;bottom:22px;right:22px;background:var(--ink);color:#fff;padding:13px 18px;border-radius:10px;
+  font-size:14px;opacity:0;transition:.3s;pointer-events:none;max-width:340px}
+.toast.show{opacity:1}
+.row{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+.section{display:none} .section.on{display:block}
+.modal{position:fixed;inset:0;background:rgba(16,35,31,.55);display:none;place-items:center;padding:16px;z-index:10}
+.modal.on{display:grid}
+.modal .card{width:100%;max-width:520px;max-height:90vh;overflow:auto}
+@media(max-width:800px){#app{grid-template-columns:1fr}nav{flex-direction:row;overflow-x:auto;align-items:center}nav .cfg{display:none}main{padding:16px}}
+</style>
+</head>
+<body>
+
+<!-- ================= AUTH ================= -->
+<div id="auth">
+  <div class="card punch">
+    <div class="logo"><div class="mark">W</div><h1 style="font-size:22px">WalletForge</h1></div>
+    <p style="color:var(--muted);font-size:14px;margin-bottom:18px">Cartes de fidélité Apple Wallet & Google Wallet pour ton commerce.</p>
+    <div class="tabs">
+      <button id="tabLogin" class="on" onclick="authTab('login')">Connexion</button>
+      <button id="tabReg" onclick="authTab('reg')">Créer un compte</button>
+    </div>
+    <div id="formLogin">
+      <label>Email</label><input id="lEmail" type="email" autocomplete="email">
+      <label>Mot de passe</label><input id="lPass" type="password" autocomplete="current-password">
+      <button class="btn" style="width:100%;margin-top:18px" onclick="login()">Se connecter</button>
+    </div>
+    <div id="formReg" style="display:none">
+      <label>Nom du commerce</label><input id="rBiz" placeholder="Café Gordon">
+      <label>Ton nom</label><input id="rName">
+      <label>Email</label><input id="rEmail" type="email">
+      <label>Mot de passe (8+ caractères)</label><input id="rPass" type="password">
+      <div class="row">
+        <div style="flex:1"><label>Pays</label><input id="rCountry" value="FR"></div>
+        <div style="flex:1"><label>Devise</label><input id="rCurrency" value="EUR"></div>
+      </div>
+      <button class="btn amber" style="width:100%;margin-top:18px" onclick="register()">Créer mon compte</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= APP ================= -->
+<div id="app">
+  <nav>
+    <div class="logo"><div class="mark">W</div><b style="font-family:Sora">WalletForge</b></div>
+    <a data-s="home" class="on" onclick="go('home')">Vue d'ensemble</a>
+    <a data-s="programs" onclick="go('programs')">Programmes & cartes</a>
+    <a data-s="customers" onclick="go('customers')">Clients</a>
+    <a data-s="tx" onclick="go('tx')">Transactions</a>
+    <a data-s="settings" onclick="go('settings')">Commerce</a>
+    <a data-s="billing" onclick="go('billing')">Abonnement</a>
+    <a onclick="logout()" style="color:#e29a9a">Déconnexion</a>
+    <div class="cfg" id="cfgStatus">Chargement du statut…</div>
+  </nav>
+  <main>
+
+    <div class="section on" id="s-home">
+      <h1 style="margin-bottom:18px">Vue d'ensemble</h1>
+      <div class="grid s4" id="statCards"></div>
+      <div class="card" style="margin-top:16px">
+        <h3 style="margin-bottom:10px">Transactions — 30 derniers jours</h3>
+        <div id="sparkline" style="display:flex;align-items:flex-end;gap:3px;height:90px"></div>
+      </div>
+    </div>
+
+    <div class="section" id="s-programs">
+      <div class="row" style="justify-content:space-between;margin-bottom:18px">
+        <h1>Programmes & cartes</h1>
+        <button class="btn amber" onclick="openModal('mProgram')">+ Nouveau programme</button>
+      </div>
+      <div class="grid" id="programList" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr))"></div>
+    </div>
+
+    <div class="section" id="s-customers">
+      <div class="row" style="justify-content:space-between;margin-bottom:18px">
+        <h1>Clients</h1>
+        <input id="custSearch" placeholder="Rechercher…" style="max-width:260px" oninput="loadCustomers()">
+      </div>
+      <div class="card" style="overflow-x:auto"><table id="custTable">
+        <thead><tr><th>Client</th><th>Contact</th><th>Carte</th><th>Solde</th><th>Visites</th><th>Wallet</th><th>RGPD</th></tr></thead>
+        <tbody></tbody></table></div>
+    </div>
+
+    <div class="section" id="s-tx">
+      <h1 style="margin-bottom:18px">Historique des transactions</h1>
+      <div class="card" style="overflow-x:auto"><table id="txTable">
+        <thead><tr><th>Date</th><th>Client</th><th>Programme</th><th>Type</th><th>Montant</th><th>Δ</th><th>Vendeur</th></tr></thead>
+        <tbody></tbody></table></div>
+    </div>
+
+    <div class="section" id="s-settings">
+      <h1 style="margin-bottom:18px">Mon commerce</h1>
+      <div class="card" style="max-width:560px">
+        <label>Nom</label><input id="bName">
+        <div class="row">
+          <div style="flex:1"><label>Couleur de marque</label><input id="bColor" type="color" style="height:44px;padding:4px"></div>
+          <div style="flex:1"><label>Couleur du texte carte</label><input id="bText" type="color" style="height:44px;padding:4px"></div>
+        </div>
+        <label>Téléphone</label><input id="bPhone">
+        <label>Site web</label><input id="bSite">
+        <label>Lien avis Google</label><input id="bReview" placeholder="https://g.page/r/…">
+        <label>Liens au verso de la carte (un par ligne : Libellé | URL)</label>
+        <textarea id="bLinks" rows="4" placeholder="Menu | https://…&#10;Instagram | https://…"></textarea>
+        <button class="btn" style="margin-top:16px" onclick="saveBusiness()">Enregistrer</button>
+      </div>
+    </div>
+
+    <div class="section" id="s-billing">
+      <h1 style="margin-bottom:6px">Abonnement</h1>
+      <p style="color:var(--muted);margin-bottom:18px">Plan actuel : <b id="curPlan">…</b> — <span id="curStatus"></span></p>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">
+        <div class="card punch"><h3>Start</h3><p class="muted" style="color:var(--muted);font-size:14px;margin:8px 0 14px">1 programme · 1 emplacement · cartes & notifs illimitées</p><button class="btn ghost" onclick="checkout('start')">Choisir Start</button></div>
+        <div class="card punch" style="border-color:var(--amber)"><h3>Grow</h3><p style="color:var(--muted);font-size:14px;margin:8px 0 14px">3 programmes · 3 emplacements · 10 managers</p><button class="btn amber" onclick="checkout('grow')">Choisir Grow</button></div>
+        <div class="card punch"><h3>Business</h3><p style="color:var(--muted);font-size:14px;margin:8px 0 14px">10 programmes · 10 emplacements · 50 managers · API</p><button class="btn ghost" onclick="checkout('business')">Choisir Business</button></div>
+      </div>
+      <button class="btn ghost" style="margin-top:16px" onclick="portal()">Gérer mon abonnement / factures</button>
+    </div>
+  </main>
+</div>
+
+<!-- ---- modal nouveau programme ---- -->
+<div class="modal" id="mProgram"><div class="card">
+  <h2 style="margin-bottom:14px">Nouveau programme</h2>
+  <label>Nom du programme</label><input id="pName" placeholder="Carte café">
+  <label>Type</label>
+  <select id="pType" onchange="pTypeSwitch()">
+    <option value="stamps">Carte à tampons (10 achetés → 1 offert)</option>
+    <option value="points">Points / cashback (1 € = X points)</option>
+  </select>
+  <div id="pStamps">
+    <label>Tampons nécessaires</label><input id="pReq" type="number" value="10" min="2">
+  </div>
+  <div id="pPoints" style="display:none">
+    <div class="row">
+      <div style="flex:1"><label>Points par unité (1 € = ?)</label><input id="pRatio" type="number" value="1" step="0.1"></div>
+      <div style="flex:1"><label>Points pour la récompense</label><input id="pGoal" type="number" value="100"></div>
+    </div>
+  </div>
+  <label>Récompense</label><input id="pReward" placeholder="11e café offert">
+  <div class="row">
+    <div style="flex:1"><label>Fond de carte</label><input id="pBg" type="color" value="#16453a" style="height:44px;padding:4px"></div>
+    <div style="flex:1"><label>Texte de carte</label><input id="pFg" type="color" value="#ffffff" style="height:44px;padding:4px"></div>
+  </div>
+  <div class="row" style="margin-top:18px;justify-content:flex-end">
+    <button class="btn ghost" onclick="closeModal('mProgram')">Annuler</button>
+    <button class="btn amber" onclick="createProgram()">Créer le programme</button>
+  </div>
+</div></div>
+
+<!-- ---- modal QR ---- -->
+<div class="modal" id="mQr"><div class="card" style="text-align:center">
+  <h2 id="qrTitle" style="margin-bottom:8px"></h2>
+  <p style="color:var(--muted);font-size:14px;margin-bottom:14px">Imprime ce QR et pose-le en caisse. Tes clients le scannent pour s'inscrire.</p>
+  <img id="qrImg" style="width:280px;max-width:100%;border:1px solid var(--line);border-radius:12px">
+  <p style="font-size:13px;margin-top:10px"><a id="qrLink" target="_blank"></a></p>
+  <button class="btn ghost" style="margin-top:14px" onclick="closeModal('mQr')">Fermer</button>
+</div></div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = '/api';
+let TOKEN = localStorage.getItem('wf_token');
+
+async function api(path, opts = {}) {
+  const res = await fetch(API + path, {
+    ...opts,
+    headers: { 'Content-Type': 'application/json', ...(TOKEN ? { Authorization: 'Bearer ' + TOKEN } : {}), ...(opts.headers || {}) },
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Erreur ' + res.status);
+  return data;
+}
+function toast(msg, err) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.background = err ? 'var(--danger)' : 'var(--ink)';
+  t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3200);
+}
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+// ---------- auth ----------
+function authTab(t) {
+  document.getElementById('formLogin').style.display = t === 'login' ? '' : 'none';
+  document.getElementById('formReg').style.display = t === 'reg' ? '' : 'none';
+  document.getElementById('tabLogin').classList.toggle('on', t === 'login');
+  document.getElementById('tabReg').classList.toggle('on', t === 'reg');
+}
+async function login() {
+  try {
+    const r = await api('/auth/login', { method: 'POST', body: { email: lEmail.value, password: lPass.value } });
+    TOKEN = r.token; localStorage.setItem('wf_token', TOKEN); boot();
+  } catch (e) { toast(e.message, 1); }
+}
+async function register() {
+  try {
+    const r = await api('/auth/register', { method: 'POST', body: {
+      business_name: rBiz.value, full_name: rName.value, email: rEmail.value,
+      password: rPass.value, country: rCountry.value, currency: rCurrency.value } });
+    TOKEN = r.token; localStorage.setItem('wf_token', TOKEN); boot();
+    toast('Bienvenue ! Crée ton premier programme de fidélité 🎉');
+  } catch (e) { toast(e.message, 1); }
+}
+function logout() { localStorage.removeItem('wf_token'); location.reload(); }
+
+// ---------- navigation ----------
+function go(s) {
+  document.querySelectorAll('.section').forEach(x => x.classList.remove('on'));
+  document.getElementById('s-' + s).classList.add('on');
+  document.querySelectorAll('nav a[data-s]').forEach(a => a.classList.toggle('on', a.dataset.s === s));
+  ({ home: loadHome, programs: loadPrograms, customers: loadCustomers, tx: loadTx, settings: loadBusiness, billing: loadBilling })[s]?.();
+}
+function openModal(id){document.getElementById(id).classList.add('on')}
+function closeModal(id){document.getElementById(id).classList.remove('on')}
+
+// ---------- home ----------
+async function loadHome() {
+  const s = await api('/stats');
+  document.getElementById('statCards').innerHTML = [
+    ['Clients', s.total_customers], ['Nouveaux (30j)', s.new_customers_30d],
+    ['Cartes Apple', s.apple_installs], ['Cartes Google', s.google_installs],
+    ['Transactions', s.total_transactions], ['CA déclaré', Number(s.total_amount).toFixed(0) + ' €'],
+    ['Notifications', s.notifications_sent], ['Non installées', s.not_installed],
+  ].map(([l, v]) => `<div class="card stat"><small>${l}</small><h2>${v ?? 0}</h2></div>`).join('');
+  const days = s.tx_by_day || [];
+  const max = Math.max(1, ...days.map(d => d.n));
+  document.getElementById('sparkline').innerHTML = days.length
+    ? days.map(d => `<div title="${d.day} : ${d.n}" style="flex:1;background:var(--pine);border-radius:3px 3px 0 0;height:${(d.n / max) * 100}%"></div>`).join('')
+    : '<p style="color:var(--muted);font-size:14px">Aucune transaction pour le moment — scanne ta première carte pour voir la courbe s\'animer.</p>';
+}
+
+// ---------- programs ----------
+function pTypeSwitch(){const t=pType.value;pStamps.style.display=t==='stamps'?'':'none';pPoints.style.display=t==='points'?'':'none'}
+async function loadPrograms() {
+  const list = await api('/programs');
+  document.getElementById('programList').innerHTML = list.map(p => `
+    <div class="card punch">
+      <div style="border-radius:10px;padding:16px;margin-bottom:12px;background:${esc(p.card_design?.bg_color || '#16453a')};color:${esc(p.card_design?.text_color || '#fff')}">
+        <b style="font-family:Sora">${esc(p.name)}</b>
+        <div style="font-size:13px;opacity:.85;margin-top:4px">${p.type === 'stamps' ? `${p.stamps_required} tampons → ${esc(p.reward_label || 'récompense')}` : `1 € = ${p.points_per_unit} pt · ${p.points_for_reward} pts → ${esc(p.reward_label || 'récompense')}`}</div>
+      </div>
+      <div class="row" style="justify-content:space-between">
+        <span class="pill ${p.active ? 'g' : 'n'}">${p.active ? 'Actif' : 'Inactif'} · ${p.cards} carte(s)</span>
+        <div class="row" style="gap:8px">
+          <button class="btn sm ghost" onclick="showQr('${p.id}','${esc(p.name)}')">QR d'inscription</button>
+          <button class="btn sm ghost" onclick="toggleProgram('${p.id}',${!p.active})">${p.active ? 'Désactiver' : 'Activer'}</button>
+        </div>
+      </div>
+    </div>`).join('') || '<p style="color:var(--muted)">Aucun programme. Crée ta première carte de fidélité — c\'est parti en 30 secondes.</p>';
+}
+async function createProgram() {
+  try {
+    await api('/programs', { method: 'POST', body: {
+      name: pName.value, type: pType.value,
+      stamps_required: Number(pReq.value), reward_label: pReward.value,
+      points_per_unit: Number(pRatio.value), points_for_reward: Number(pGoal.value),
+      card_design: { bg_color: pBg.value, text_color: pFg.value } } });
+    closeModal('mProgram'); loadPrograms(); toast('Programme créé ✔');
+  } catch (e) { toast(e.message, 1); }
+}
+async function toggleProgram(id, active) {
+  await api('/programs/' + id, { method: 'PATCH', body: { active } }); loadPrograms();
+}
+async function showQr(id, name) {
+  const res = await fetch(API + '/programs/' + id + '/qr', { headers: { Authorization: 'Bearer ' + TOKEN } });
+  const blob = await res.blob();
+  document.getElementById('qrImg').src = URL.createObjectURL(blob);
+  document.getElementById('qrTitle').textContent = name;
+  const link = location.origin + '/join/' + id;
+  const a = document.getElementById('qrLink'); a.href = link; a.textContent = link;
+  openModal('mQr');
+}
+
+// ---------- customers ----------
+async function loadCustomers() {
+  const q = document.getElementById('custSearch').value;
+  const list = await api('/customers' + (q ? '?q=' + encodeURIComponent(q) : ''));
+  document.querySelector('#custTable tbody').innerHTML = list.map(c => {
+    const p = c.passes[0] || {};
+    const wallet = { apple: '<span class="pill g"> Apple</span>', google: '<span class="pill g">Google</span>',
+      both: '<span class="pill g">Les deux</span>', none: '<span class="pill n">Non installée</span>' }[p.wallet || 'none'];
+    return `<tr>
+      <td><b>${esc(c.first_name)} ${esc(c.last_name || '')}</b><br><small style="color:var(--muted)">via ${esc(c.source)}</small></td>
+      <td style="font-size:13px">${esc(c.email || '')}<br>${esc(c.phone || '')}</td>
+      <td>${esc(p.program || '—')}</td>
+      <td>${p.type === 'stamps' ? (p.stamps ?? 0) + ' tampons' : Number(p.points ?? 0) + ' pts'}${p.rewards > 0 ? ` <span class="pill a">${p.rewards} 🎁</span>` : ''}</td>
+      <td>${c.visits}</td>
+      <td>${wallet}</td>
+      <td><button class="btn sm ghost" onclick="exportCust('${c.id}')">Export</button>
+          <button class="btn sm ghost" style="color:var(--danger)" onclick="anonCust('${c.id}')">Anonymiser</button></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="7" style="color:var(--muted)">Aucun client pour le moment. Affiche ton QR d\'inscription en caisse.</td></tr>';
+}
+function exportCust(id) {
+  fetch(API + '/customers/' + id + '/export', { headers: { Authorization: 'Bearer ' + TOKEN } })
+    .then(r => r.blob()).then(b => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'export-client.json'; a.click(); });
+}
+async function anonCust(id) {
+  if (!confirm('Anonymiser ce client (RGPD) ? Cette action est irréversible.')) return;
+  await api('/customers/' + id, { method: 'DELETE' }); loadCustomers(); toast('Client anonymisé');
+}
+
+// ---------- transactions ----------
+async function loadTx() {
+  const list = await api('/transactions');
+  const labels = { purchase: 'Achat', add_stamp: 'Tampon +', remove_stamp: 'Tampon −', add_points: 'Points +',
+    remove_points: 'Points −', reward_redeemed: 'Récompense utilisée', adjustment: 'Ajustement' };
+  document.querySelector('#txTable tbody').innerHTML = list.map(t => `<tr>
+    <td style="font-size:13px">${new Date(t.created_at).toLocaleString('fr-FR')}</td>
+    <td>${esc(t.first_name)} ${esc(t.last_name || '')}</td>
+    <td>${esc(t.program_name)}</td>
+    <td>${labels[t.type] || esc(t.type)}</td>
+    <td>${t.amount ? Number(t.amount).toFixed(2) + ' €' : '—'}</td>
+    <td>${t.stamps_delta ? t.stamps_delta + ' tampon' : ''}${Number(t.points_delta) ? Number(t.points_delta) + ' pts' : ''}</td>
+    <td style="font-size:13px">${esc(t.staff_name || '—')}</td>
+  </tr>`).join('') || '<tr><td colspan="7" style="color:var(--muted)">Aucune transaction.</td></tr>';
+}
+
+// ---------- settings ----------
+async function loadBusiness() {
+  const b = await api('/programs/business/profile');
+  bName.value = b.name || ''; bColor.value = b.brand_color || '#16453a'; bText.value = b.text_color || '#ffffff';
+  bPhone.value = b.phone || ''; bSite.value = b.website || ''; bReview.value = b.google_review_url || '';
+  bLinks.value = (b.back_links || []).map(l => l.label + ' | ' + l.url).join('\n');
+}
+async function saveBusiness() {
+  const back_links = bLinks.value.split('\n').filter(Boolean).map(l => {
+    const [label, url] = l.split('|').map(s => s.trim()); return { label, url };
+  });
+  await api('/programs/business/profile', { method: 'PATCH', body: {
+    name: bName.value, brand_color: bColor.value, text_color: bText.value,
+    phone: bPhone.value, website: bSite.value, google_review_url: bReview.value, back_links } });
+  toast('Commerce mis à jour ✔');
+}
+
+// ---------- billing ----------
+async function loadBilling() {
+  const me = await api('/auth/me');
+  document.getElementById('curPlan').textContent = me.plan || 'trial';
+  document.getElementById('curStatus').textContent = { trialing: 'période d\'essai', active: 'actif', past_due: 'paiement en retard', canceled: 'annulé' }[me.subscription_status] || '';
+}
+async function checkout(plan) {
+  try { const r = await api('/billing/checkout', { method: 'POST', body: { plan } }); location.href = r.url; }
+  catch (e) { toast(e.message, 1); }
+}
+async function portal() {
+  try { const r = await api('/billing/portal', { method: 'POST' }); location.href = r.url; }
+  catch (e) { toast(e.message, 1); }
+}
+
+// ---------- boot ----------
+async function boot() {
+  try {
+    const me = await api('/auth/me');
+    document.getElementById('auth').style.display = 'none';
+    document.getElementById('app').style.display = 'grid';
+    const st = await api('/status');
+    document.getElementById('cfgStatus').innerHTML =
+      `<span>${st.apple_wallet ? '🟢' : '🟠'} Apple Wallet ${st.apple_wallet ? '' : '(certifs à installer)'}</span>` +
+      `<span>${st.google_wallet ? '🟢' : '🟠'} Google Wallet</span>` +
+      `<span>${st.stripe ? '🟢' : '🟠'} Stripe</span>`;
+    loadHome();
+  } catch { localStorage.removeItem('wf_token'); TOKEN = null; }
+}
+if (TOKEN) boot();
+</script>
+</body>
+</html>

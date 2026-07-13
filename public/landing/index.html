@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rejoindre le programme de fidélité</title>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#16453a;--fg:#ffffff;--mist:#eef4f1;--line:#d8e4de;--text:#22332e;--muted:#6b7f78;--amber:#c77f14}
+*{box-sizing:border-box;margin:0}
+body{font-family:Inter,system-ui,sans-serif;background:var(--mist);min-height:100vh;display:flex;justify-content:center;padding:16px;color:var(--text)}
+.wrap{width:100%;max-width:430px}
+.cardPreview{border-radius:16px;padding:22px;color:var(--fg);background:var(--bg);margin-bottom:14px;position:relative;overflow:hidden}
+.cardPreview::after{content:"";position:absolute;bottom:-4px;left:14px;right:14px;height:10px;
+  background-image:radial-gradient(circle 4px, var(--mist) 4px, transparent 4px);background-size:18px 10px;background-repeat:repeat-x}
+.cardPreview h1{font-family:Sora;font-size:21px}
+.cardPreview p{opacity:.85;font-size:14px;margin-top:6px}
+.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:22px}
+label{display:block;font-size:13px;font-weight:600;color:var(--muted);margin:12px 0 4px}
+input{width:100%;font-size:16px;padding:12px;border:1px solid var(--line);border-radius:10px}
+input:focus{outline:2px solid var(--bg);border-color:transparent}
+.consent{display:flex;gap:10px;align-items:flex-start;margin-top:14px;font-size:13px;color:var(--muted)}
+.consent input{width:auto;margin-top:2px}
+button{width:100%;margin-top:18px;padding:14px;border:none;border-radius:12px;font-family:Sora;font-weight:600;font-size:16px;cursor:pointer}
+.go{background:var(--bg);color:#fff}
+.walletBtns{display:none;text-align:center}
+.walletBtns.on{display:block}
+.wbtn{display:flex;align-items:center;justify-content:center;gap:10px;background:#000;color:#fff;text-decoration:none;
+  padding:14px;border-radius:12px;margin-top:12px;font-weight:600;font-size:15px}
+.err{color:#c0392b;font-size:14px;margin-top:12px;display:none}
+.done h2{font-family:Sora;font-size:19px;margin-bottom:6px}
+small.legal{display:block;margin-top:14px;color:var(--muted);font-size:11.5px;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="cardPreview" id="preview">
+    <h1 id="bizName">…</h1>
+    <p id="progDesc"></p>
+  </div>
+
+  <div class="card" id="formCard">
+    <label>Prénom *</label><input id="fFirst" autocomplete="given-name">
+    <label>Nom</label><input id="fLast" autocomplete="family-name">
+    <label>Email *</label><input id="fEmail" type="email" autocomplete="email">
+    <label>Téléphone</label><input id="fPhone" type="tel" autocomplete="tel">
+    <label>Date d'anniversaire (optionnel — pour un cadeau 🎂)</label><input id="fBday" type="date">
+    <div class="consent">
+      <input type="checkbox" id="cTerms">
+      <span>J'accepte les <a href="#" onclick="return false">conditions du programme</a> et la <a href="#" onclick="return false">politique de confidentialité</a>. *</span>
+    </div>
+    <div class="consent">
+      <input type="checkbox" id="cMkt">
+      <span>J'accepte de recevoir des offres et notifications de ce commerce (tu peux te désinscrire à tout moment).</span>
+    </div>
+    <button class="go" id="goBtn" onclick="signup()">Obtenir ma carte</button>
+    <p class="err" id="err"></p>
+  </div>
+
+  <div class="card walletBtns" id="walletCard">
+    <div class="done">
+      <h2>🎉 Ta carte est prête !</h2>
+      <p style="color:var(--muted);font-size:14px">Ajoute-la à ton téléphone en un clic :</p>
+    </div>
+    <a class="wbtn" id="appleBtn"> Ajouter à Apple Wallet</a>
+    <a class="wbtn" id="googleBtn" style="background:#fff;color:#000;border:1.5px solid #000">G&nbsp; Ajouter à Google Wallet</a>
+    <p class="err" id="werr"></p>
+  </div>
+
+  <small class="legal">Tes données sont utilisées uniquement pour le programme de fidélité de ce commerce (RGPD).</small>
+</div>
+
+<script>
+const programId = location.pathname.split('/').pop();
+let passId = null;
+
+async function load() {
+  const res = await fetch('/api/customers/public/program/' + programId);
+  if (!res.ok) { document.getElementById('bizName').textContent = 'Programme introuvable'; return; }
+  const p = await res.json();
+  document.getElementById('bizName').textContent = p.business_name;
+  document.getElementById('progDesc').textContent =
+    p.type === 'stamps'
+      ? `${p.name} — ${p.stamps_required} tampons et c'est gagné : ${p.reward_label || 'récompense offerte'} !`
+      : `${p.name} — cumule des points à chaque achat (${p.points_for_reward} pts → ${p.reward_label || 'récompense'}).`;
+  const d = p.card_design || {};
+  const prev = document.getElementById('preview');
+  prev.style.background = d.bg_color || p.brand_color || '#16453a';
+  prev.style.color = d.text_color || '#fff';
+}
+
+async function signup() {
+  const err = document.getElementById('err'); err.style.display = 'none';
+  if (!document.getElementById('cTerms').checked) {
+    err.textContent = 'Merci d\'accepter les conditions du programme pour continuer.';
+    err.style.display = 'block'; return;
+  }
+  const btn = document.getElementById('goBtn'); btn.disabled = true; btn.textContent = 'Création…';
+  try {
+    const res = await fetch('/api/customers/public/signup/' + programId, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        first_name: fFirst.value.trim(), last_name: fLast.value.trim(),
+        email: fEmail.value.trim(), phone: fPhone.value.trim(),
+        birthday: fBday.value || null,
+        marketing_consent: document.getElementById('cMkt').checked,
+        source: new URLSearchParams(location.search).get('src') || 'qr',
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erreur');
+    passId = data.pass_id;
+    document.getElementById('formCard').style.display = 'none';
+    document.getElementById('walletCard').classList.add('on');
+    document.getElementById('appleBtn').href = '/api/wallet/apple/' + passId + '.pkpass';
+    document.getElementById('googleBtn').onclick = async (e) => {
+      e.preventDefault();
+      const r = await fetch('/api/wallet/google/' + passId);
+      const d = await r.json();
+      if (r.ok) location.href = d.url;
+      else { document.getElementById('werr').textContent = d.error; document.getElementById('werr').style.display = 'block'; }
+    };
+  } catch (e) {
+    err.textContent = e.message; err.style.display = 'block';
+    btn.disabled = false; btn.textContent = 'Obtenir ma carte';
+  }
+}
+load();
+</script>
+</body>
+</html>

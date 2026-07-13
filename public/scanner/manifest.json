@@ -1,0 +1,9 @@
+{
+  "name": "WalletForge Scanner",
+  "short_name": "Scanner",
+  "start_url": "/scanner/",
+  "display": "standalone",
+  "background_color": "#10231f",
+  "theme_color": "#10231f",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
