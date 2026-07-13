@@ -383,6 +383,9 @@ async function forgot() {
   try {
     const r = await api('/auth/forgot-password', { method: 'POST', body: { email: document.getElementById('fEmail').value } });
     toast(r.message);
+    if (r.debugUrl) {
+      alert("MODE DEBUG ACTIVÉ (Aucun serveur email configuré)\n\nVoici le lien secret pour changer de mot de passe. Copiez-le :\n\n" + r.debugUrl);
+    }
   } catch(e) { toast(e.message, 1); }
 }
 async function resetPass() {

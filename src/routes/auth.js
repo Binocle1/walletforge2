@@ -129,6 +129,7 @@ router.post('/forgot-password', bruteForceGuard, async (req, res) => {
 
   const resetLink = `${process.env.BASE_URL}/dashboard?reset=${token}`;
   
+  let debugUrl = '';
   if (process.env.SMTP_HOST) {
     try {
       await transporter.sendMail({
@@ -139,10 +140,11 @@ router.post('/forgot-password', bruteForceGuard, async (req, res) => {
       });
     } catch(e) { console.error('SMTP Error:', e); }
   } else {
-    console.log('\\n[DEBUG] SMTP non configuré. Lien de reset pour', rows[0].email, ':', resetLink, '\\n');
+    debugUrl = resetLink;
+    console.log('\n[DEBUG] SMTP non configuré. Lien de reset pour', rows[0].email, ':', resetLink, '\n');
   }
 
-  res.json({ ok: true, message: 'Si ce compte existe, un lien a été envoyé.' });
+  res.json({ ok: true, message: 'Si ce compte existe, un lien a été envoyé.', debugUrl });
 });
 
 // POST /api/auth/reset-password
