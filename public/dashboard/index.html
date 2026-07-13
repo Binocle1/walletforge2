@@ -138,7 +138,7 @@ td{padding:10px;border-bottom:1px solid var(--line)}
         </div>
       </div>
       <div class="card" style="overflow-x:auto"><table id="custTable">
-        <thead><tr><th>Client</th><th>Contact</th><th>Carte</th><th>Solde</th><th>Visites</th><th>Wallet</th><th>RGPD</th></tr></thead>
+        <thead><tr><th>Client</th><th>Contact</th><th>Carte</th><th>Solde</th><th>Coches / Visites</th><th>Wallet</th><th>RGPD</th></tr></thead>
         <tbody></tbody></table></div>
     </div>
 
@@ -281,6 +281,13 @@ td{padding:10px;border-bottom:1px solid var(--line)}
     <label><input type="checkbox" id="maWinbackOn"> Activer</label>
     <input id="maWinbackMsg" placeholder="Vous nous manquez ! Revenez vite !">
   </div>
+  
+  <div class="card punch" style="margin-bottom:12px;padding:16px">
+    <h3>⭐ Avis Google (1h après 1er achat)</h3>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:8px">Envoyé 1 heure après la toute première visite du client.</p>
+    <label><input type="checkbox" id="maReviewOn"> Activer</label>
+    <input id="maReviewMsg" placeholder="Merci pour votre visite ! Laissez-nous un avis :)">
+  </div>
 
   <div class="row" style="margin-top:18px;justify-content:flex-end">
     <button class="btn ghost" onclick="closeModal('mAutomations')">Annuler</button>
@@ -417,6 +424,8 @@ async function editAutomations(id, name) {
     document.getElementById('maBdayMsg').value = auto.birthday?.msg || '';
     document.getElementById('maWinbackOn').checked = !!auto.winback?.active;
     document.getElementById('maWinbackMsg').value = auto.winback?.msg || '';
+    document.getElementById('maReviewOn').checked = !!auto.review?.active;
+    document.getElementById('maReviewMsg').value = auto.review?.msg || '';
     openModal('mAutomations');
   } catch(e) { toast(e.message, 1); }
 }
@@ -427,6 +436,7 @@ async function saveAutomations() {
       welcome: { active: document.getElementById('maWelcomeOn').checked, msg: document.getElementById('maWelcomeMsg').value },
       birthday: { active: document.getElementById('maBdayOn').checked, msg: document.getElementById('maBdayMsg').value },
       winback: { active: document.getElementById('maWinbackOn').checked, msg: document.getElementById('maWinbackMsg').value },
+      review: { active: document.getElementById('maReviewOn').checked, msg: document.getElementById('maReviewMsg').value },
     };
     await api('/programs/' + currentProgramId, { method: 'PATCH', body: { automations } });
     closeModal('mAutomations');
@@ -447,7 +457,7 @@ async function loadCustomers() {
       <td style="font-size:13px">${esc(c.email || '')}<br>${esc(c.phone || '')}</td>
       <td>${esc(p.program || '—')}</td>
       <td>${p.type === 'stamps' ? (p.stamps ?? 0) + ' tampons' : Number(p.points ?? 0) + ' pts'}${p.rewards > 0 ? ` <span class="pill a">${p.rewards} 🎁</span>` : ''}</td>
-      <td>${c.visits}</td>
+      <td>${p.type === 'stamps' ? (c.stamps_total || 0) : c.visits}</td>
       <td>${wallet}</td>
       <td><button class="btn sm ghost" onclick="showClient('${c.id}')">Détails</button>
           <button class="btn sm ghost" onclick="exportCust('${c.id}')">Export</button>
@@ -475,7 +485,7 @@ async function showClient(id) {
     document.getElementById('mcStats').innerHTML = `
       <div class="card stat"><small>Points/Tamp.</small><h2>${p.type==='stamps' ? (p.stamps||0) : Number(p.points||0)}</h2></div>
       <div class="card stat"><small>Récompenses</small><h2>${p.rewards || 0}</h2></div>
-      <div class="card stat"><small>Visites</small><h2>${c.visits || 0}</h2></div>
+      <div class="card stat"><small>Coches/Visites</small><h2>${p.type === 'stamps' ? (c.stamps_total || 0) : (c.visits || 0)}</h2></div>
       <div class="card stat"><small>Dépensé</small><h2>${Number(c.total_spent||0).toFixed(0)} €</h2></div>
     `;
     document.getElementById('mcNotifMsg').value = '';

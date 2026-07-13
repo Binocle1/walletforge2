@@ -66,6 +66,7 @@ router.get('/', required, async (req, res) => {
               'wallet', p.wallet_status, 'serial', p.serial_number))
               FILTER (WHERE p.id IS NOT NULL), '[]') AS passes,
             (SELECT count(*)::int FROM transactions t WHERE t.customer_id = c.id AND t.type = 'purchase') AS visits,
+            (SELECT coalesce(sum(stamps_delta),0)::int FROM transactions t WHERE t.customer_id = c.id) AS stamps_total,
             (SELECT coalesce(sum(t.amount),0) FROM transactions t WHERE t.customer_id = c.id AND t.type = 'purchase') AS total_spent,
             (SELECT max(t.created_at) FROM transactions t WHERE t.customer_id = c.id) AS last_visit
      FROM customers c
@@ -99,6 +100,7 @@ router.get('/:id', required, async (req, res) => {
               'wallet', p.wallet_status, 'serial', p.serial_number))
               FILTER (WHERE p.id IS NOT NULL), '[]') AS passes,
             (SELECT count(*)::int FROM transactions t WHERE t.customer_id = c.id AND t.type = 'purchase') AS visits,
+            (SELECT coalesce(sum(stamps_delta),0)::int FROM transactions t WHERE t.customer_id = c.id) AS stamps_total,
             (SELECT coalesce(sum(t.amount),0) FROM transactions t WHERE t.customer_id = c.id AND t.type = 'purchase') AS total_spent,
             (SELECT max(t.created_at) FROM transactions t WHERE t.customer_id = c.id) AS last_visit
      FROM customers c

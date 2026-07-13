@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WalletForge — Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#10231f; --pine:#16453a; --mist:#eef4f1; --paper:#fbfdfc;
+  --line:#d8e4de; --text:#22332e; --muted:#6b7f78; --danger:#c0392b;
+}
+*{box-sizing:border-box;margin:0}
+body{font-family:Inter,system-ui,sans-serif;background:var(--mist);color:var(--text);padding:20px}
+h1,h2{font-family:Sora,sans-serif;color:var(--ink);margin-bottom:16px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:22px;margin-bottom:20px;overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em;padding:8px 10px;border-bottom:1px solid var(--line)}
+td{padding:10px;border-bottom:1px solid var(--line)}
+button{background:var(--pine);color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px}
+.toast{position:fixed;bottom:22px;right:22px;background:var(--ink);color:#fff;padding:13px 18px;border-radius:10px;font-size:14px;opacity:0;transition:.3s;pointer-events:none}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+
+<h1>Portail Super Admin</h1>
+<div class="card">
+  <h2>Commerces inscrits</h2>
+  <table id="tTenants">
+    <thead><tr><th>ID</th><th>Tenant</th><th>Commerce</th><th>Inscrit le</th><th>Users</th><th>Cartes</th><th>Transactions</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2>Utilisateurs</h2>
+  <table id="tUsers">
+    <thead><tr><th>Email</th><th>Nom</th><th>Rôle</th><th>Tenant</th><th>Inscrit le</th><th>Action</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let TOKEN = localStorage.getItem('wf_token');
+if (!TOKEN) { alert('Connectez-vous sur le dashboard d\'abord.'); location.href = '/dashboard'; }
+
+async function api(path, opts = {}) {
+  const res = await fetch('/api/admin' + path, {
+    ...opts,
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + TOKEN },
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    if (res.status === 403) { alert('Accès refusé. Vous n\'êtes pas superadmin.'); location.href = '/dashboard'; }
+    throw new Error(data.error || 'Erreur ' + res.status);
+  }
+  return data;
+}
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3000);
+}
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function loadData() {
+  try {
+    const tenants = await api('/tenants');
+    document.querySelector('#tTenants tbody').innerHTML = tenants.map(t => `<tr>
+      <td>${t.tenant_id}</td>
+      <td>${esc(t.tenant_name)}</td>
+      <td>${esc(t.business_name)}</td>
+      <td>${new Date(t.created_at).toLocaleDateString()}</td>
+      <td>${t.users_count}</td>
+      <td>${t.passes_count}</td>
+      <td>${t.tx_count}</td>
+    </tr>`).join('');
+
+    const users = await api('/users');
+    document.querySelector('#tUsers tbody').innerHTML = users.map(u => `<tr>
+      <td>${esc(u.email)}</td>
+      <td>${esc(u.full_name)}</td>
+      <td>${u.role}</td>
+      <td>${esc(u.tenant_name)}</td>
+      <td>${new Date(u.created_at).toLocaleDateString()}</td>
+      <td>
+        <button onclick="setRole('${u.id}', 'superadmin')" ${u.role==='superadmin'?'disabled style="opacity:0.5"':''}>Promouvoir Admin</button>
+      </td>
+    </tr>`).join('');
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function setRole(id, role) {
+  if (!confirm('Promouvoir cet utilisateur en superadmin ?')) return;
+  try {
+    await api('/users/' + id + '/role', { method: 'PATCH', body: { role } });
+    toast('Rôle modifié avec succès');
+    loadData();
+  } catch(e) {
+    alert(e.message);
+  }
+}
+
+loadData();
+</script>
+</body>
+</html>

@@ -163,8 +163,8 @@ function renderProfile() {
 
   const acts = [];
   if (c.type === 'stamps') {
-    acts.push(`<button onclick="tx('purchase')">+ Achat (1 tampon)</button>`);
-    acts.push(`<button class="warn" onclick="tx('remove_stamp')">− Retirer un tampon</button>`);
+    acts.push(`<button onclick="tx('purchase')">+ 1 coche</button>`);
+    acts.push(`<button class="warn" onclick="tx('remove_stamp')">− 1 coche</button>`);
   } else {
     acts.push(`<button onclick="askAmount()">+ Achat (montant €)</button>`);
     acts.push(`<button class="warn" onclick="askPoints()">− Retirer des points</button>`);

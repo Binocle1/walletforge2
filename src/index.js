@@ -10,6 +10,7 @@ const txRoutes = require('./routes/transactions');
 const billing = require('./routes/billing');
 const apple = require('./services/appleWallet');
 const google = require('./services/googleWallet');
+require('./cron'); // Lance le worker des tâches en arrière-plan
 
 const app = express();
 app.set('trust proxy', 1);
@@ -51,6 +52,7 @@ app.use('/api/wallet', walletRoutes);
 app.use('/api/apple', walletRoutes);          // web service Apple : /api/apple/v1/...
 app.use('/api', txRoutes);
 app.use('/api/billing', billing.router);
+app.use('/api/admin', require('./routes/admin'));
 
 // Statut de configuration (le dashboard l'affiche)
 app.get('/api/status', (req, res) => {
@@ -65,6 +67,7 @@ app.get('/api/status', (req, res) => {
 // ---------- Frontends statiques ----------
 app.use('/dashboard', express.static(path.join(__dirname, '../public/dashboard')));
 app.use('/scanner', express.static(path.join(__dirname, '../public/scanner')));
+app.use('/admin', express.static(path.join(__dirname, '../public/admin')));
 app.use('/join-assets', express.static(path.join(__dirname, '../public/landing')));
 app.get('/join/:programId', (req, res) => res.sendFile(path.join(__dirname, '../public/landing/index.html')));
 app.get('/', (req, res) => res.redirect('/dashboard/'));
