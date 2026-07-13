@@ -47,6 +47,7 @@ CREATE TABLE locations (
   address     TEXT,
   latitude    DOUBLE PRECISION,
   longitude   DOUBLE PRECISION,
+  relevant_text TEXT,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -113,6 +114,7 @@ CREATE TABLE customer_passes (
   points        NUMERIC(12,2) NOT NULL DEFAULT 0,
   rewards_available INT NOT NULL DEFAULT 0,
   wallet_status TEXT NOT NULL DEFAULT 'none',    -- none | apple | google | both
+  announcement  TEXT,
   last_updated  TIMESTAMPTZ NOT NULL DEFAULT now(),
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (customer_id, program_id)

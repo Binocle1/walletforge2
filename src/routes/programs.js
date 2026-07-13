@@ -77,4 +77,32 @@ router.patch('/business/profile', required, roles('owner', 'admin'), async (req,
   res.json(rows[0]);
 });
 
+// GET /api/programs/business/location — infos de géolocalisation pour le geofencing
+router.get('/business/location', required, async (req, res) => {
+  const { rows } = await db.query('SELECT * FROM locations WHERE tenant_id = $1 LIMIT 1', [req.auth.tid]);
+  res.json(rows[0] || {});
+});
+
+// PATCH /api/programs/business/location
+router.patch('/business/location', required, roles('owner', 'admin'), async (req, res) => {
+  const allowed = ['address', 'latitude', 'longitude', 'relevant_text'];
+  const sets = [], vals = [req.auth.tid];
+  for (const k of allowed) if (k in req.body) { vals.push(req.body[k]); sets.push(`${k} = $${vals.length}`); }
+  if (!sets.length) return res.status(400).json({ error: 'Rien à modifier' });
+  
+  const { rows } = await db.query(
+    `UPDATE locations SET ${sets.join(', ')} WHERE tenant_id = $1 RETURNING *`, vals);
+  
+  // Si aucune ligne n'existe, on la crée
+  if (!rows[0]) {
+    const b = await db.query('SELECT id FROM businesses WHERE tenant_id = $1 LIMIT 1', [req.auth.tid]);
+    if(b.rows[0]) {
+       const ins = await db.query(`INSERT INTO locations (tenant_id, business_id, name, address, latitude, longitude, relevant_text) VALUES ($1,$2,'Principal',$3,$4,$5,$6) RETURNING *`, 
+       [req.auth.tid, b.rows[0].id, req.body.address, req.body.latitude, req.body.longitude, req.body.relevant_text]);
+       return res.json(ins.rows[0]);
+    }
+  }
+  res.json(rows[0] || {});
+});
+
 module.exports = router;

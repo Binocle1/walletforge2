@@ -57,7 +57,16 @@ function buildPassJson({ pass, program, business, customer }) {
     { key: 'terms', label: 'Conditions', value: design.terms || 'Programme de fidélité — voir en boutique.' },
   ];
 
-  return {
+  if (pass.announcement) {
+    backFields.push({
+      key: 'announcement',
+      label: 'Dernier Message',
+      value: pass.announcement,
+      changeMessage: "Message du magasin : %@"
+    });
+  }
+
+  const passJson = {
     formatVersion: 1,
     passTypeIdentifier: process.env.APPLE_PASS_TYPE_ID,
     teamIdentifier: process.env.APPLE_TEAM_ID,
@@ -82,6 +91,16 @@ function buildPassJson({ pass, program, business, customer }) {
       backFields,
     },
   };
+
+  if (ctx.locations && ctx.locations.length > 0) {
+    passJson.locations = ctx.locations.map(l => ({
+      latitude: l.latitude,
+      longitude: l.longitude,
+      relevantText: l.relevant_text || undefined
+    }));
+  }
+
+  return passJson;
 }
 
 function hexToRgb(hex) {

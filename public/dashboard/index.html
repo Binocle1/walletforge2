@@ -133,7 +133,10 @@ td{padding:10px;border-bottom:1px solid var(--line)}
     <div class="section" id="s-customers">
       <div class="row" style="justify-content:space-between;margin-bottom:18px">
         <h1>Clients</h1>
-        <input id="custSearch" placeholder="Rechercher…" style="max-width:260px" oninput="loadCustomers()">
+        <div class="row">
+          <button class="btn amber" onclick="openModal('mNotifyAll')">Notifier tous les clients</button>
+          <input id="custSearch" placeholder="Rechercher…" style="max-width:260px" oninput="loadCustomers()">
+        </div>
       </div>
       <div class="card" style="overflow-x:auto"><table id="custTable">
         <thead><tr><th>Client</th><th>Contact</th><th>Carte</th><th>Solde</th><th>Visites</th><th>Wallet</th><th>RGPD</th></tr></thead>
@@ -160,7 +163,17 @@ td{padding:10px;border-bottom:1px solid var(--line)}
         <label>Lien avis Google</label><input id="bReview" placeholder="https://g.page/r/…">
         <label>Liens au verso de la carte (un par ligne : Libellé | URL)</label>
         <textarea id="bLinks" rows="4" placeholder="Menu | https://…&#10;Instagram | https://…"></textarea>
-        <button class="btn" style="margin-top:16px" onclick="saveBusiness()">Enregistrer</button>
+        
+        <h3 style="margin-top:24px;margin-bottom:8px">Géolocalisation (Geofencing)</h3>
+        <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Affiche une notification sur le téléphone du client quand il passe près de la boutique.</p>
+        <label>Adresse physique (optionnel)</label><input id="bAddress" placeholder="12 rue de la Paix, Paris">
+        <div class="row">
+          <div style="flex:1"><label>Latitude</label><input id="bLat" type="number" step="any" placeholder="48.868..."></div>
+          <div style="flex:1"><label>Longitude</label><input id="bLng" type="number" step="any" placeholder="2.331..."></div>
+        </div>
+        <label>Message d'approche</label><input id="bRelText" placeholder="Passez nous voir !">
+
+        <button class="btn" style="margin-top:24px" onclick="saveBusiness()">Enregistrer</button>
       </div>
     </div>
 
@@ -213,6 +226,33 @@ td{padding:10px;border-bottom:1px solid var(--line)}
   <img id="qrImg" style="width:280px;max-width:100%;border:1px solid var(--line);border-radius:12px">
   <p style="font-size:13px;margin-top:10px"><a id="qrLink" target="_blank"></a></p>
   <button class="btn ghost" style="margin-top:14px" onclick="closeModal('mQr')">Fermer</button>
+</div></div>
+
+<!-- ---- modal fiche client ---- -->
+<div class="modal" id="mClient"><div class="card">
+  <div class="row" style="justify-content:space-between;margin-bottom:14px">
+    <h2 id="mcName">Client</h2>
+    <button class="btn ghost sm" onclick="closeModal('mClient')">Fermer</button>
+  </div>
+  <p id="mcContact" style="color:var(--muted);font-size:14px;margin-bottom:14px"></p>
+  <div class="grid s4" style="margin-bottom:18px" id="mcStats"></div>
+  <div style="padding-top:18px;border-top:1px solid var(--line)">
+    <h3 style="margin-bottom:10px">Envoyer une notification (Push)</h3>
+    <textarea id="mcNotifMsg" rows="3" placeholder="Votre message... (ex: Votre commande est prête !)" style="margin-bottom:10px"></textarea>
+    <button class="btn amber" onclick="sendNotifClient()">Envoyer le message</button>
+  </div>
+</div></div>
+
+<!-- ---- modal notify all ---- -->
+<div class="modal" id="mNotifyAll"><div class="card">
+  <h2 style="margin-bottom:14px">Notifier tous les clients</h2>
+  <p style="color:var(--muted);font-size:14px;margin-bottom:14px">Envoyez une notification Push (message sur l'écran verrouillé) à tous vos clients ayant installé la carte.</p>
+  <label>Message</label>
+  <textarea id="mnaMsg" rows="3" placeholder="Offre spéciale : -20% ce week-end !"></textarea>
+  <div class="row" style="margin-top:18px;justify-content:flex-end">
+    <button class="btn ghost" onclick="closeModal('mNotifyAll')">Annuler</button>
+    <button class="btn amber" onclick="sendNotifAll()">Envoyer à tout le monde</button>
+  </div>
 </div></div>
 
 <div class="toast" id="toast"></div>
@@ -345,7 +385,8 @@ async function loadCustomers() {
       <td>${p.type === 'stamps' ? (p.stamps ?? 0) + ' tampons' : Number(p.points ?? 0) + ' pts'}${p.rewards > 0 ? ` <span class="pill a">${p.rewards} 🎁</span>` : ''}</td>
       <td>${c.visits}</td>
       <td>${wallet}</td>
-      <td><button class="btn sm ghost" onclick="exportCust('${c.id}')">Export</button>
+      <td><button class="btn sm ghost" onclick="showClient('${c.id}')">Détails</button>
+          <button class="btn sm ghost" onclick="exportCust('${c.id}')">Export</button>
           <button class="btn sm ghost" style="color:var(--danger)" onclick="anonCust('${c.id}')">Anonymiser</button></td>
     </tr>`;
   }).join('') || '<tr><td colspan="7" style="color:var(--muted)">Aucun client pour le moment. Affiche ton QR d\'inscription en caisse.</td></tr>';
@@ -357,6 +398,46 @@ function exportCust(id) {
 async function anonCust(id) {
   if (!confirm('Anonymiser ce client (RGPD) ? Cette action est irréversible.')) return;
   await api('/customers/' + id, { method: 'DELETE' }); loadCustomers(); toast('Client anonymisé');
+}
+
+let currentClientId = null;
+async function showClient(id) {
+  try {
+    currentClientId = id;
+    const c = await api('/customers/' + id);
+    document.getElementById('mcName').textContent = c.first_name + ' ' + (c.last_name || '');
+    document.getElementById('mcContact').textContent = (c.email || '') + (c.phone ? ' · ' + c.phone : '');
+    const p = c.passes[0] || {};
+    document.getElementById('mcStats').innerHTML = `
+      <div class="card stat"><small>Points/Tamp.</small><h2>${p.type==='stamps' ? (p.stamps||0) : Number(p.points||0)}</h2></div>
+      <div class="card stat"><small>Récompenses</small><h2>${p.rewards || 0}</h2></div>
+      <div class="card stat"><small>Visites</small><h2>${c.visits || 0}</h2></div>
+      <div class="card stat"><small>Dépensé</small><h2>${Number(c.total_spent||0).toFixed(0)} €</h2></div>
+    `;
+    document.getElementById('mcNotifMsg').value = '';
+    openModal('mClient');
+  } catch(e) { toast(e.message, 1); }
+}
+
+async function sendNotifClient() {
+  const msg = document.getElementById('mcNotifMsg').value;
+  if(!msg) return toast("Message vide", 1);
+  try {
+    const res = await api('/customers/' + currentClientId + '/notify', { method:'POST', body:{message:msg}});
+    toast('Notification envoyée à ' + res.passesUpdated + ' appareils !');
+    closeModal('mClient');
+  } catch(e) { toast(e.message, 1); }
+}
+
+async function sendNotifAll() {
+  const msg = document.getElementById('mnaMsg').value;
+  if(!msg) return toast("Message vide", 1);
+  try {
+    const res = await api('/customers/notify_all', { method:'POST', body:{message:msg}});
+    toast('Notification envoyée à ' + res.totalSent + ' appareils !');
+    closeModal('mNotifyAll');
+    document.getElementById('mnaMsg').value = '';
+  } catch(e) { toast(e.message, 1); }
 }
 
 // ---------- transactions ----------
@@ -381,6 +462,8 @@ async function loadBusiness() {
   bName.value = b.name || ''; bColor.value = b.brand_color || '#16453a'; bText.value = b.text_color || '#ffffff';
   bPhone.value = b.phone || ''; bSite.value = b.website || ''; bReview.value = b.google_review_url || '';
   bLinks.value = (b.back_links || []).map(l => l.label + ' | ' + l.url).join('\n');
+  const loc = await api('/programs/business/location').catch(()=>({}));
+  bAddress.value = loc.address || ''; bLat.value = loc.latitude || ''; bLng.value = loc.longitude || ''; bRelText.value = loc.relevant_text || '';
 }
 async function saveBusiness() {
   const back_links = bLinks.value.split('\n').filter(Boolean).map(l => {
@@ -389,6 +472,10 @@ async function saveBusiness() {
   await api('/programs/business/profile', { method: 'PATCH', body: {
     name: bName.value, brand_color: bColor.value, text_color: bText.value,
     phone: bPhone.value, website: bSite.value, google_review_url: bReview.value, back_links } });
+    
+  await api('/programs/business/location', { method: 'PATCH', body: {
+    address: bAddress.value, latitude: bLat.value ? Number(bLat.value) : null, longitude: bLng.value ? Number(bLng.value) : null, relevant_text: bRelText.value } });
+    
   toast('Commerce mis à jour ✔');
 }
 

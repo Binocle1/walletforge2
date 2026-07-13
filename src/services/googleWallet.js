@@ -81,7 +81,8 @@ const classId = (programId) => `${process.env.GOOGLE_WALLET_ISSUER_ID}.prog_${pr
 const objectId = (serial) => `${process.env.GOOGLE_WALLET_ISSUER_ID}.card_${serial.replace(/-/g, '')}`;
 
 // ---------- Classe (template du programme) ----------
-async function ensureClass(program, business) {
+async function ensureClass(ctx) {
+  const { program, business, locations } = ctx;
   const id = classId(program.id);
   const cls = {
     id,
@@ -93,8 +94,18 @@ async function ensureClass(program, business) {
     reviewStatus: 'UNDER_REVIEW',
     countryCode: business.country || 'FR',
   };
+  
+  if (locations && locations.length > 0) {
+    cls.locations = locations.map(l => ({
+      latitude: l.latitude,
+      longitude: l.longitude
+    }));
+  }
+
   const existing = await gApi('GET', `${API}/loyaltyClass/${id}`);
   if (existing.notFound) await gApi('POST', `${API}/loyaltyClass`, cls);
+  // Optional: update existing class with locations
+  // else await gApi('PATCH', `${API}/loyaltyClass/${id}`, { locations: cls.locations });
   return id;
 }
 
@@ -135,7 +146,7 @@ async function saveLink(ctx) {
     e.code = 'GOOGLE_NOT_CONFIGURED';
     throw e;
   }
-  await ensureClass(ctx.program, ctx.business);
+  await ensureClass(ctx);
   const obj = buildObject(ctx);
   const s = serviceAccount();
   const token = jwt.sign(

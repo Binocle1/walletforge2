@@ -21,6 +21,7 @@ async function loadPassContext(passId) {
      WHERE p.id = $1`, [passId]);
   if (!rows[0]) return null;
   const r = rows[0];
+  const locs = await db.query('SELECT latitude, longitude, relevant_text FROM locations WHERE business_id = $1 AND latitude IS NOT NULL', [r.b_id]);
   return {
     pass: r,
     customer: { id: r.customer_id, first_name: r.first_name, last_name: r.last_name, email: r.customer_email },
@@ -29,6 +30,7 @@ async function loadPassContext(passId) {
                points_for_reward: r.points_for_reward, card_design: r.card_design, barcode_type: r.barcode_type },
     business: { id: r.b_id, name: r.b_name, brand_color: r.brand_color, text_color: r.text_color,
                 logo_url: r.logo_url, back_links: r.back_links, currency: r.currency, country: r.country },
+    locations: locs.rows,
     tenantId: r.tenant_id,
   };
 }

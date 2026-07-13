@@ -81,6 +81,51 @@ router.get('/:id/export', required, roles('owner', 'admin'), async (req, res) =>
   res.json({ customer: c.rows[0], passes: passes.rows, transactions: tx.rows, notifications: notifs.rows });
 });
 
+// GET /api/customers/:id — détail du client pour la fiche client
+router.get('/:id', required, async (req, res) => {
+  const { rows } = await db.query(
+    `SELECT c.id, c.first_name, c.last_name, c.email, c.phone, c.birthday, c.source, c.tags,
+            c.marketing_consent, c.created_at,
+            coalesce(json_agg(json_build_object('pass_id', p.id, 'program', pr.name, 'type', pr.type,
+              'stamps', p.stamps, 'points', p.points, 'rewards', p.rewards_available,
+              'wallet', p.wallet_status, 'serial', p.serial_number))
+              FILTER (WHERE p.id IS NOT NULL), '[]') AS passes,
+            (SELECT count(*)::int FROM transactions t WHERE t.customer_id = c.id AND t.type = 'purchase') AS visits,
+            (SELECT coalesce(sum(t.amount),0) FROM transactions t WHERE t.customer_id = c.id AND t.type = 'purchase') AS total_spent,
+            (SELECT max(t.created_at) FROM transactions t WHERE t.customer_id = c.id) AS last_visit
+     FROM customers c
+     LEFT JOIN customer_passes p ON p.customer_id = c.id
+     LEFT JOIN loyalty_programs pr ON pr.id = p.program_id
+     WHERE c.id = $1 AND c.tenant_id = $2
+     GROUP BY c.id`, [req.params.id, req.auth.tid]);
+  if (!rows[0]) return res.status(404).json({ error: 'Client introuvable' });
+  res.json(rows[0]);
+});
+
+// POST /api/customers/notify_all — envoie un message push à tous
+router.post('/notify_all', required, roles('owner', 'admin'), async (req, res) => {
+  const { message } = req.body;
+  if (!message) return res.status(400).json({ error: 'Message requis' });
+  
+  const passes = await db.query('UPDATE customer_passes SET announcement = $1, last_updated = now() WHERE tenant_id = $2 RETURNING id, customer_id', [message, req.auth.tid]);
+  for (const pass of passes.rows) {
+     await db.query(`INSERT INTO notifications (tenant_id, customer_id, pass_id, type, message, status) VALUES ($1,$2,$3,'marketing',$4,'simulated')`, [req.auth.tid, pass.customer_id, pass.id, message]);
+  }
+  res.json({ success: true, totalSent: passes.rows.length, simulated: true });
+});
+
+// POST /api/customers/:id/notify — envoie un message push au client
+router.post('/:id/notify', required, roles('owner', 'admin', 'manager'), async (req, res) => {
+  const { message } = req.body;
+  if (!message) return res.status(400).json({ error: 'Message requis' });
+  
+  const passes = await db.query('UPDATE customer_passes SET announcement = $1, last_updated = now() WHERE customer_id = $2 AND tenant_id = $3 RETURNING id', [message, req.params.id, req.auth.tid]);
+  for (const pass of passes.rows) {
+     await db.query(`INSERT INTO notifications (tenant_id, customer_id, pass_id, type, message, status) VALUES ($1,$2,$3,'marketing',$4,'simulated')`, [req.auth.tid, req.params.id, pass.id, message]);
+  }
+  res.json({ success: true, passesUpdated: passes.rows.length, simulated: true });
+});
+
 // DELETE /api/customers/:id — anonymisation RGPD (conserve les stats agrégées)
 router.delete('/:id', required, roles('owner', 'admin'), async (req, res) => {
   const { rows } = await db.query(
