@@ -11,14 +11,8 @@ router.get('/', required, async (req, res) => {
   res.json(rows);
 });
 
-// POST /api/programs — création avec contrôle de la limite du plan
+// POST /api/programs — création
 router.post('/', required, roles('owner', 'admin'), async (req, res) => {
-  const t = await db.query('SELECT plan_limits FROM tenants WHERE id = $1', [req.auth.tid]);
-  const limit = t.rows[0].plan_limits.programs ?? 1;
-  const n = await db.query('SELECT count(*)::int AS n FROM loyalty_programs WHERE tenant_id = $1 AND active', [req.auth.tid]);
-  if (n.rows[0].n >= limit) {
-    return res.status(402).json({ error: `Ton plan permet ${limit} programme(s) actif(s). Passe au plan supérieur pour en créer plus.` });
-  }
   const { name, type, stamps_required, reward_label, points_per_unit, points_for_reward, card_design, barcode_type } = req.body;
   if (!name || !['stamps', 'points'].includes(type)) {
     return res.status(400).json({ error: 'Nom et type (stamps ou points) requis' });
@@ -38,9 +32,9 @@ router.post('/', required, roles('owner', 'admin'), async (req, res) => {
 
 // PATCH /api/programs/:id
 router.patch('/:id', required, roles('owner', 'admin'), async (req, res) => {
-  const allowed = ['name', 'active', 'stamps_required', 'reward_label', 'points_per_unit', 'points_for_reward', 'card_design', 'barcode_type'];
+  const allowed = ['name', 'active', 'stamps_required', 'reward_label', 'points_per_unit', 'points_for_reward', 'card_design', 'barcode_type', 'automations'];
   const sets = [], vals = [req.params.id, req.auth.tid];
-  for (const k of allowed) if (k in req.body) { vals.push(k === 'card_design' ? JSON.stringify(req.body[k]) : req.body[k]); sets.push(`${k} = $${vals.length}`); }
+  for (const k of allowed) if (k in req.body) { vals.push(['card_design', 'automations'].includes(k) ? JSON.stringify(req.body[k]) : req.body[k]); sets.push(`${k} = $${vals.length}`); }
   if (!sets.length) return res.status(400).json({ error: 'Rien à modifier' });
   const { rows } = await db.query(
     `UPDATE loyalty_programs SET ${sets.join(', ')} WHERE id = $1 AND tenant_id = $2 RETURNING *`, vals);

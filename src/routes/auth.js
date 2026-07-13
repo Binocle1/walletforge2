@@ -58,14 +58,6 @@ router.post('/invite', required, roles('owner', 'admin'), async (req, res) => {
   if (!['admin', 'manager', 'cashier', 'readonly'].includes(role)) {
     return res.status(400).json({ error: 'Rôle invalide' });
   }
-  // Contrôle de la limite managers du plan
-  const t = await db.query('SELECT plan_limits FROM tenants WHERE id = $1', [req.auth.tid]);
-  const limit = t.rows[0].plan_limits.managers ?? 0;
-  const count = await db.query(
-    `SELECT count(*)::int AS n FROM users WHERE tenant_id = $1 AND role IN ('admin','manager','cashier')`, [req.auth.tid]);
-  if (count.rows[0].n >= limit) {
-    return res.status(402).json({ error: `Limite de ${limit} membre(s) d'équipe atteinte sur ton plan. Passe au plan supérieur.` });
-  }
   const hash = await bcrypt.hash(password || Math.random().toString(36), 12);
   try {
     const u = await db.query(

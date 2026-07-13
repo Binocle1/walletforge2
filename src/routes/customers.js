@@ -22,9 +22,10 @@ router.post('/public/signup/:programId', async (req, res) => {
   if (marketing_consent !== true && marketing_consent !== false) {
     return res.status(400).json({ error: 'Le consentement marketing doit être explicitement accepté ou refusé' });
   }
-  const p = await db.query('SELECT tenant_id FROM loyalty_programs WHERE id = $1 AND active', [req.params.programId]);
+  const p = await db.query('SELECT tenant_id, automations FROM loyalty_programs WHERE id = $1 AND active', [req.params.programId]);
   if (!p.rows[0]) return res.status(404).json({ error: 'Programme introuvable' });
   const tid = p.rows[0].tenant_id;
+  const automations = p.rows[0].automations || {};
 
   const consentEntry = JSON.stringify([{ marketing: !!marketing_consent, at: new Date().toISOString(), via: 'landing' }]);
   const { rows } = await db.query(
@@ -40,6 +41,13 @@ router.post('/public/signup/:programId', async (req, res) => {
      source || 'qr', source_ref || null, !!marketing_consent, consentEntry]);
 
   const pass = await loyalty.createPass(tid, rows[0].id, req.params.programId);
+  
+  if (automations.welcome?.active && automations.welcome?.msg) {
+    const msg = automations.welcome.msg;
+    await db.query('UPDATE customer_passes SET announcement = $1 WHERE id = $2', [msg, pass.id]);
+    await db.query(`INSERT INTO notifications (tenant_id, customer_id, pass_id, type, message, status) VALUES ($1,$2,$3,'automation',$4,'simulated')`, [tid, rows[0].id, pass.id, msg]);
+  }
+  
   res.json({ customer_id: rows[0].id, pass_id: pass.id, serial: pass.serial_number });
 });
 
@@ -104,10 +112,22 @@ router.get('/:id', required, async (req, res) => {
 
 // POST /api/customers/notify_all — envoie un message push à tous
 router.post('/notify_all', required, roles('owner', 'admin'), async (req, res) => {
-  const { message } = req.body;
+  const { message, target } = req.body;
   if (!message) return res.status(400).json({ error: 'Message requis' });
   
-  const passes = await db.query('UPDATE customer_passes SET announcement = $1, last_updated = now() WHERE tenant_id = $2 RETURNING id, customer_id', [message, req.auth.tid]);
+  let query = 'UPDATE customer_passes SET announcement = $1, last_updated = now() WHERE tenant_id = $2';
+  
+  if (target === 'recent') {
+    query += ` AND EXISTS (
+      SELECT 1 FROM transactions t 
+      WHERE t.customer_id = customer_passes.customer_id 
+      AND t.created_at >= now() - interval '7 days'
+    )`;
+  }
+  
+  query += ' RETURNING id, customer_id';
+  
+  const passes = await db.query(query, [message, req.auth.tid]);
   for (const pass of passes.rows) {
      await db.query(`INSERT INTO notifications (tenant_id, customer_id, pass_id, type, message, status) VALUES ($1,$2,$3,'marketing',$4,'simulated')`, [req.auth.tid, pass.customer_id, pass.id, message]);
   }

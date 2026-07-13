@@ -107,7 +107,6 @@ td{padding:10px;border-bottom:1px solid var(--line)}
     <a data-s="customers" onclick="go('customers')">Clients</a>
     <a data-s="tx" onclick="go('tx')">Transactions</a>
     <a data-s="settings" onclick="go('settings')">Commerce</a>
-    <a data-s="billing" onclick="go('billing')">Abonnement</a>
     <a onclick="logout()" style="color:#e29a9a">Déconnexion</a>
     <div class="cfg" id="cfgStatus">Chargement du statut…</div>
   </nav>
@@ -177,15 +176,6 @@ td{padding:10px;border-bottom:1px solid var(--line)}
       </div>
     </div>
 
-    <div class="section" id="s-billing">
-      <h1 style="margin-bottom:6px">Abonnement</h1>
-      <p style="color:var(--muted);margin-bottom:18px">Plan actuel : <b id="curPlan">…</b> — <span id="curStatus"></span></p>
-      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">
-        <div class="card punch"><h3>Start</h3><p class="muted" style="color:var(--muted);font-size:14px;margin:8px 0 14px">1 programme · 1 emplacement · cartes & notifs illimitées</p><button class="btn ghost" onclick="checkout('start')">Choisir Start</button></div>
-        <div class="card punch" style="border-color:var(--amber)"><h3>Grow</h3><p style="color:var(--muted);font-size:14px;margin:8px 0 14px">3 programmes · 3 emplacements · 10 managers</p><button class="btn amber" onclick="checkout('grow')">Choisir Grow</button></div>
-        <div class="card punch"><h3>Business</h3><p style="color:var(--muted);font-size:14px;margin:8px 0 14px">10 programmes · 10 emplacements · 50 managers · API</p><button class="btn ghost" onclick="checkout('business')">Choisir Business</button></div>
-      </div>
-      <button class="btn ghost" style="margin-top:16px" onclick="portal()">Gérer mon abonnement / factures</button>
     </div>
   </main>
 </div>
@@ -245,13 +235,52 @@ td{padding:10px;border-bottom:1px solid var(--line)}
 
 <!-- ---- modal notify all ---- -->
 <div class="modal" id="mNotifyAll"><div class="card">
-  <h2 style="margin-bottom:14px">Notifier tous les clients</h2>
-  <p style="color:var(--muted);font-size:14px;margin-bottom:14px">Envoyez une notification Push (message sur l'écran verrouillé) à tous vos clients ayant installé la carte.</p>
+  <h2 style="margin-bottom:14px">Notifier les clients</h2>
+  <p style="color:var(--muted);font-size:14px;margin-bottom:14px">Envoyez une notification Push (message sur l'écran verrouillé) à vos clients ayant installé la carte.</p>
+  
+  <label>Ciblage</label>
+  <select id="mnaTarget" style="margin-bottom:14px">
+    <option value="all">Tous les clients</option>
+    <option value="recent">Uniquement ceux venus dans les 7 derniers jours</option>
+  </select>
+
   <label>Message</label>
   <textarea id="mnaMsg" rows="3" placeholder="Offre spéciale : -20% ce week-end !"></textarea>
   <div class="row" style="margin-top:18px;justify-content:flex-end">
     <button class="btn ghost" onclick="closeModal('mNotifyAll')">Annuler</button>
-    <button class="btn amber" onclick="sendNotifAll()">Envoyer à tout le monde</button>
+    <button class="btn amber" onclick="sendNotifAll()">Envoyer</button>
+  </div>
+</div></div>
+
+<!-- ---- modal automations ---- -->
+<div class="modal" id="mAutomations"><div class="card">
+  <h2 id="maTitle" style="margin-bottom:14px">Automatisations</h2>
+  <p style="color:var(--muted);font-size:14px;margin-bottom:18px">Configurez des messages Push envoyés automatiquement.</p>
+  
+  <div class="card punch" style="margin-bottom:12px;padding:16px">
+    <h3>👋 Bienvenue</h3>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:8px">Envoyé juste après l'inscription (installation de la carte).</p>
+    <label><input type="checkbox" id="maWelcomeOn"> Activer</label>
+    <input id="maWelcomeMsg" placeholder="Bienvenue chez nous !">
+  </div>
+  
+  <div class="card punch" style="margin-bottom:12px;padding:16px">
+    <h3>🎂 Anniversaire</h3>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:8px">Envoyé le jour de l'anniversaire du client.</p>
+    <label><input type="checkbox" id="maBdayOn"> Activer</label>
+    <input id="maBdayMsg" placeholder="Joyeux anniversaire ! Venez fêter ça avec nous !">
+  </div>
+  
+  <div class="card punch" style="margin-bottom:12px;padding:16px">
+    <h3>💤 Relance (inactif > 30j)</h3>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:8px">Envoyé si le client n'est pas venu depuis 30 jours.</p>
+    <label><input type="checkbox" id="maWinbackOn"> Activer</label>
+    <input id="maWinbackMsg" placeholder="Vous nous manquez ! Revenez vite !">
+  </div>
+
+  <div class="row" style="margin-top:18px;justify-content:flex-end">
+    <button class="btn ghost" onclick="closeModal('mAutomations')">Annuler</button>
+    <button class="btn amber" onclick="saveAutomations()">Enregistrer</button>
   </div>
 </div></div>
 
@@ -307,7 +336,7 @@ function go(s) {
   document.querySelectorAll('.section').forEach(x => x.classList.remove('on'));
   document.getElementById('s-' + s).classList.add('on');
   document.querySelectorAll('nav a[data-s]').forEach(a => a.classList.toggle('on', a.dataset.s === s));
-  ({ home: loadHome, programs: loadPrograms, customers: loadCustomers, tx: loadTx, settings: loadBusiness, billing: loadBilling })[s]?.();
+  ({ home: loadHome, programs: loadPrograms, customers: loadCustomers, tx: loadTx, settings: loadBusiness })[s]?.();
 }
 function openModal(id){document.getElementById(id).classList.add('on')}
 function closeModal(id){document.getElementById(id).classList.remove('on')}
@@ -342,6 +371,7 @@ async function loadPrograms() {
         <span class="pill ${p.active ? 'g' : 'n'}">${p.active ? 'Actif' : 'Inactif'} · ${p.cards} carte(s)</span>
         <div class="row" style="gap:8px">
           <button class="btn sm ghost" onclick="showQr('${p.id}','${esc(p.name)}')">QR d'inscription</button>
+          <button class="btn sm ghost" onclick="editAutomations('${p.id}','${esc(p.name)}')">Automatisations</button>
           <button class="btn sm ghost" onclick="toggleProgram('${p.id}',${!p.active})">${p.active ? 'Désactiver' : 'Activer'}</button>
         </div>
       </div>
@@ -368,6 +398,36 @@ async function showQr(id, name) {
   const link = location.origin + '/join/' + id;
   const a = document.getElementById('qrLink'); a.href = link; a.textContent = link;
   openModal('mQr');
+}
+
+let currentProgramId = null;
+async function editAutomations(id, name) {
+  try {
+    currentProgramId = id;
+    document.getElementById('maTitle').textContent = 'Automatisations - ' + name;
+    const p = await api('/programs/' + id);
+    const auto = p.automations || {};
+    document.getElementById('maWelcomeOn').checked = !!auto.welcome?.active;
+    document.getElementById('maWelcomeMsg').value = auto.welcome?.msg || '';
+    document.getElementById('maBdayOn').checked = !!auto.birthday?.active;
+    document.getElementById('maBdayMsg').value = auto.birthday?.msg || '';
+    document.getElementById('maWinbackOn').checked = !!auto.winback?.active;
+    document.getElementById('maWinbackMsg').value = auto.winback?.msg || '';
+    openModal('mAutomations');
+  } catch(e) { toast(e.message, 1); }
+}
+
+async function saveAutomations() {
+  try {
+    const automations = {
+      welcome: { active: document.getElementById('maWelcomeOn').checked, msg: document.getElementById('maWelcomeMsg').value },
+      birthday: { active: document.getElementById('maBdayOn').checked, msg: document.getElementById('maBdayMsg').value },
+      winback: { active: document.getElementById('maWinbackOn').checked, msg: document.getElementById('maWinbackMsg').value },
+    };
+    await api('/programs/' + currentProgramId, { method: 'PATCH', body: { automations } });
+    closeModal('mAutomations');
+    toast('Automatisations enregistrées ✔');
+  } catch(e) { toast(e.message, 1); }
 }
 
 // ---------- customers ----------
@@ -431,9 +491,10 @@ async function sendNotifClient() {
 
 async function sendNotifAll() {
   const msg = document.getElementById('mnaMsg').value;
+  const target = document.getElementById('mnaTarget').value;
   if(!msg) return toast("Message vide", 1);
   try {
-    const res = await api('/customers/notify_all', { method:'POST', body:{message:msg}});
+    const res = await api('/customers/notify_all', { method:'POST', body:{message:msg, target:target}});
     toast('Notification envoyée à ' + res.totalSent + ' appareils !');
     closeModal('mNotifyAll');
     document.getElementById('mnaMsg').value = '';
@@ -477,21 +538,6 @@ async function saveBusiness() {
     address: bAddress.value, latitude: bLat.value ? Number(bLat.value) : null, longitude: bLng.value ? Number(bLng.value) : null, relevant_text: bRelText.value } });
     
   toast('Commerce mis à jour ✔');
-}
-
-// ---------- billing ----------
-async function loadBilling() {
-  const me = await api('/auth/me');
-  document.getElementById('curPlan').textContent = me.plan || 'trial';
-  document.getElementById('curStatus').textContent = { trialing: 'période d\'essai', active: 'actif', past_due: 'paiement en retard', canceled: 'annulé' }[me.subscription_status] || '';
-}
-async function checkout(plan) {
-  try { const r = await api('/billing/checkout', { method: 'POST', body: { plan } }); location.href = r.url; }
-  catch (e) { toast(e.message, 1); }
-}
-async function portal() {
-  try { const r = await api('/billing/portal', { method: 'POST' }); location.href = r.url; }
-  catch (e) { toast(e.message, 1); }
 }
 
 // ---------- boot ----------
