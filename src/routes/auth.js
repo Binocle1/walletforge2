@@ -127,7 +127,7 @@ router.post('/forgot-password', bruteForceGuard, async (req, res) => {
     [token, rows[0].id]
   );
 
-  const resetLink = \`\${process.env.BASE_URL}/dashboard?reset=\${token}\`;
+  const resetLink = `${process.env.BASE_URL}/dashboard?reset=${token}`;
   
   if (process.env.SMTP_HOST) {
     try {
@@ -135,7 +135,7 @@ router.post('/forgot-password', bruteForceGuard, async (req, res) => {
         from: process.env.SMTP_FROM || '"WalletForge" <noreply@walletforge.com>',
         to: rows[0].email,
         subject: 'Réinitialisation de votre mot de passe',
-        text: \`Cliquez sur le lien suivant pour réinitialiser votre mot de passe : \${resetLink}\\n\\nCe lien expire dans 1 heure.\`
+        text: `Cliquez sur le lien suivant pour réinitialiser votre mot de passe : ${resetLink}\n\nCe lien expire dans 1 heure.`
       });
     } catch(e) { console.error('SMTP Error:', e); }
   } else {
