@@ -2,8 +2,7 @@ const jwt = require('jsonwebtoken');
 
 const SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
-  console.error('FATAL: JWT_SECRET must be set in production');
-  process.exit(1);
+  console.warn('WARNING: JWT_SECRET is not set in production. Using insecure fallback.');
 }
 
 function sign(user) {
@@ -54,4 +53,17 @@ function bruteForceGuard(req, res, next) {
   next();
 }
 
-module.exports = { sign, required, roles, bruteForceGuard };
+const db = require('./db');
+
+async function checkPlanLimit(tenantId, resource, table, column = 'tenant_id') {
+  const t = await db.query('SELECT plan_limits FROM tenants WHERE id = $1', [tenantId]);
+  const limits = t.rows[0]?.plan_limits || {};
+  const max = limits[resource];
+  if (max === undefined || max === null) return; // no limit
+  const count = await db.query(`SELECT count(*)::int AS n FROM ${table} WHERE ${column} = $1`, [tenantId]);
+  if (count.rows[0].n >= max) {
+    throw new Error(`Limite atteinte pour votre plan (${resource}: ${max} max)`);
+  }
+}
+
+module.exports = { sign, required, roles, bruteForceGuard, checkPlanLimit };

@@ -240,22 +240,40 @@ function renderProfile() {
   }
   document.getElementById('cName').innerHTML = `${esc(c.first_name)} ${esc(c.last_name || '')} ${badges}`;
   document.getElementById('cProg').textContent = c.program_name;
-  const bal = c.type === 'stamps'
-    ? `<div><b>${c.stamps}/${c.stamps_required}</b><small>Tampons</small></div>`
-    : `<div><b>${Number(c.points)}</b><small>Points</small></div>`;
-  document.getElementById('cBalance').innerHTML = bal +
-    `<div><b>${c.rewards_available}</b><small>Récompenses</small></div>`;
+  let bal = '';
+  if (c.type === 'stamps') {
+    bal = `<div><b>${c.stamps}/${c.stamps_required}</b><small>Tampons</small></div><div><b>${c.rewards_available}</b><small>Récompenses</small></div>`;
+  } else if (c.type === 'giftcard') {
+    bal = `<div><b>${Number(c.points).toFixed(2)} €</b><small>Solde</small></div>`;
+  } else {
+    bal = `<div><b>${Number(c.points)}</b><small>Points</small></div><div><b>${c.rewards_available}</b><small>Récompenses</small></div>`;
+  }
+  document.getElementById('cBalance').innerHTML = bal;
 
   const acts = [];
   if (c.type === 'stamps') {
     acts.push(`<button onclick="tx('purchase')">+ 1 coche</button>`);
     acts.push(`<button class="warn" onclick="tx('remove_stamp')">− 1 coche</button>`);
+  } else if (c.type === 'giftcard') {
+    acts.push(`<button class="gold" onclick="askAmount()">− Débiter (payer)</button>`);
+    acts.push(`<button onclick="askReload()">+ Recharger la carte</button>`);
   } else {
     acts.push(`<button onclick="askAmount()">+ Achat (montant €)</button>`);
     acts.push(`<button class="warn" onclick="askPoints()">− Retirer des points</button>`);
   }
-  const canRedeem = c.type === 'stamps' ? c.rewards_available > 0 : Number(c.points) >= c.points_for_reward;
-  acts.push(`<button class="gold" ${canRedeem ? '' : 'disabled style="opacity:.4"'} onclick="tx('reward_redeemed')">🎁 Utiliser la récompense</button>`);
+  
+  if (c.type !== 'giftcard') {
+    if (c.automations && c.automations.multi_rewards && c.automations.multi_rewards.length > 0) {
+      c.automations.multi_rewards.forEach(r => {
+        const balance = c.type === 'stamps' ? c.stamps + (c.rewards_available * c.stamps_required) : c.points;
+        const canRedeem = balance >= r.threshold;
+        acts.push(`<button class="gold" ${canRedeem ? '' : 'disabled style="opacity:.4"'} onclick="tx('reward_redeemed', ${r.threshold})">🎁 Utiliser : ${esc(r.label)} (${r.threshold} ${c.type === 'stamps' ? 'c' : 'pts'})</button>`);
+      });
+    } else {
+      const canRedeem = c.type === 'stamps' ? c.rewards_available > 0 : Number(c.points) >= c.points_for_reward;
+      acts.push(`<button class="gold" ${canRedeem ? '' : 'disabled style="opacity:.4"'} onclick="tx('reward_redeemed')">🎁 Utiliser la récompense</button>`);
+    }
+  }
   document.getElementById('cActions').innerHTML = acts.join('');
   document.getElementById('amountRow').classList.remove('on');
 
@@ -275,6 +293,12 @@ function askPoints() {
   pendingType = 'remove_points'; 
   npValue = ''; 
   document.getElementById('npVal').textContent = '0.00 pts';
+  document.getElementById('numpad').classList.add('on'); 
+}
+function askReload() {
+  pendingType = 'add_points'; 
+  npValue = ''; 
+  document.getElementById('npVal').textContent = '0.00 €';
   document.getElementById('numpad').classList.add('on'); 
 }
 function np(digit) {

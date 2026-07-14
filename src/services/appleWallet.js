@@ -42,6 +42,10 @@ function buildPassJson(ctx) {
       { key: 'stamps', label: 'TAMPONS', value: `${pass.stamps} / ${program.stamps_required}` },
       { key: 'reward', label: 'RÉCOMPENSE', value: program.reward_label || 'Récompense' }
     );
+  } else if (program.type === 'giftcard') {
+    fields.push(
+      { key: 'balance', label: 'SOLDE DISPONIBLE', value: `${Number(pass.points).toFixed(2)} €` }
+    );
   } else {
     fields.push(
       { key: 'points', label: 'POINTS', value: String(Number(pass.points)) },

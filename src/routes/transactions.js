@@ -14,7 +14,7 @@ router.get('/scan/:serial', required, roles(...CAN_SCAN), async (req, res) => {
     `SELECT p.id AS pass_id, p.serial_number, p.stamps, p.points, p.rewards_available, p.wallet_status, p.tags, p.current_streak,
             c.id AS customer_id, c.first_name, c.last_name, c.email,
             pr.name AS program_name, pr.type, pr.stamps_required, pr.reward_label,
-            pr.points_per_unit, pr.points_for_reward
+            pr.points_per_unit, pr.points_for_reward, pr.automations
      FROM customer_passes p
      JOIN customers c ON c.id = p.customer_id
      JOIN loyalty_programs pr ON pr.id = p.program_id

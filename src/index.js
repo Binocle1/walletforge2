@@ -87,6 +87,7 @@ app.get('/api/status', required, (req, res) => {
 });
 
 // ---------- Frontends statiques ----------
+app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 app.use('/dashboard', express.static(path.join(__dirname, '../public/dashboard')));
 app.use('/scanner', express.static(path.join(__dirname, '../public/scanner')));
 app.use('/admin', express.static(path.join(__dirname, '../public/admin')));

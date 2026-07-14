@@ -16,8 +16,8 @@ router.get('/', required, async (req, res) => {
 // POST /api/programs — création
 router.post('/', required, roles('owner', 'admin'), async (req, res) => {
   const { name, type, stamps_required, reward_label, points_per_unit, points_for_reward, card_design, barcode_type } = req.body;
-  if (!name || !['stamps', 'points'].includes(type)) {
-    return res.status(400).json({ error: 'Nom et type (stamps ou points) requis' });
+  if (!name || !['stamps', 'points', 'giftcard'].includes(type)) {
+    return res.status(400).json({ error: 'Nom et type (stamps, points ou giftcard) requis' });
   }
   
   // Check plan limits

@@ -279,6 +279,7 @@ td{padding:10px;border-bottom:1px solid var(--line)}
   <select id="pType" onchange="pTypeSwitch()">
     <option value="stamps">Carte à tampons (10 achetés → 1 offert)</option>
     <option value="points">Points / cashback (1 € = X points)</option>
+    <option value="giftcard">Carte Cadeau (Prépayée)</option>
   </select>
   <div id="pStamps">
     <label>Tampons nécessaires</label><input id="pReq" type="number" value="10" min="2">
@@ -407,6 +408,12 @@ td{padding:10px;border-bottom:1px solid var(--line)}
     <p style="font-size:13px;color:var(--muted);margin-bottom:8px">Envoyé 1 heure après la toute première visite du client.</p>
     <label><input type="checkbox" id="maReviewOn"> Activer</label>
     <input id="maReviewMsg" placeholder="Merci pour votre visite ! Laissez-nous un avis :)">
+  </div>
+
+  <div class="card punch" style="margin-bottom:12px;padding:16px">
+    <h3>🎁 Échelle de récompenses (Multi-paliers)</h3>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:8px">Définissez plusieurs paliers de récompense (un par ligne : <code>Seuil | Nom de la récompense</code>). Laissez vide pour conserver la récompense simple.</p>
+    <textarea id="maMultiRewards" rows="3" placeholder="5 | -10%&#10;10 | Café offert&#10;20 | Brunch offert"></textarea>
   </div>
 
   <div class="row" style="margin-top:18px;justify-content:flex-end">
@@ -602,12 +609,24 @@ async function editAutomations(id, name) {
     document.getElementById('maWinbackMsg').value = auto.winback?.msg || '';
     document.getElementById('maReviewOn').checked = !!auto.review?.active;
     document.getElementById('maReviewMsg').value = auto.review?.msg || '';
+    const multi = auto.multi_rewards || [];
+    document.getElementById('maMultiRewards').value = multi.map(r => `${r.threshold} | ${r.label}`).join('\n');
     openModal('mAutomations');
   } catch(e) { toast(e.message, 1); }
 }
 
 async function saveAutomations() {
   try {
+    const multi_rewards = document.getElementById('maMultiRewards').value
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.includes('|'))
+      .map(line => {
+        const [threshold, label] = line.split('|').map(s => s.trim());
+        return { threshold: Number(threshold) || 1, label };
+      })
+      .sort((a, b) => a.threshold - b.threshold);
+
     const automations = {
       welcome: { 
         active: document.getElementById('maWelcomeOn').checked, 
@@ -617,6 +636,7 @@ async function saveAutomations() {
       birthday: { active: document.getElementById('maBdayOn').checked, msg: document.getElementById('maBdayMsg').value },
       winback: { active: document.getElementById('maWinbackOn').checked, msg: document.getElementById('maWinbackMsg').value },
       review: { active: document.getElementById('maReviewOn').checked, msg: document.getElementById('maReviewMsg').value },
+      multi_rewards
     };
     await api('/programs/' + currentProgramId, { method: 'PATCH', body: { automations } });
     closeModal('mAutomations');

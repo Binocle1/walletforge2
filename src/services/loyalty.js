@@ -139,7 +139,13 @@ async function applyTransaction({ passId, type, amount, userId, locationId, comm
 
     switch (type) {
       case 'purchase': {
-        if (program.type === 'stamps') {
+        if (program.type === 'giftcard') {
+          const spend = Number(amount || 0);
+          if (spend <= 0) throw new Error('Montant invalide');
+          if (Number(pass.points) < spend) throw new Error(`Solde insuffisant (${Number(pass.points).toFixed(2)} € disponibles)`);
+          pointsDelta = -spend;
+          message = `${spend.toFixed(2)} € débités. Nouveau solde : ${(Number(pass.points) - spend).toFixed(2)} €`;
+        } else if (program.type === 'stamps') {
           stampsDelta = 1 * multiplier;
           const newStamps = pass.stamps + stampsDelta;
           if (newStamps >= program.stamps_required) {
@@ -174,13 +180,26 @@ async function applyTransaction({ passId, type, amount, userId, locationId, comm
       }
       case 'reward_redeemed': {
         if (program.type === 'points') {
-          if (Number(pass.points) < program.points_for_reward) throw new Error('Points insuffisants');
-          pointsDelta = -program.points_for_reward;
+          const cost = amount ? Number(amount) : program.points_for_reward;
+          if (Number(pass.points) < cost) throw new Error('Points insuffisants');
+          pointsDelta = -cost;
         } else {
-          if (pass.rewards_available < 1) throw new Error('Aucune récompense disponible');
-          rewardsDelta = -1;
+          // Si on précise un montant (pour les multi-paliers, ex: -5 tampons)
+          if (amount && Number(amount) > 0) {
+            const cost = Number(amount);
+            // On permet de consommer des tampons bruts au lieu des récompenses stockées, ou on déduit des récompenses si on a des restes
+            if (pass.stamps + (pass.rewards_available * program.stamps_required) < cost) {
+              throw new Error('Tampons insuffisants');
+            }
+            // Retirer des tampons
+            stampsDelta = -cost;
+          } else {
+            // Mode classique (legacy)
+            if (pass.rewards_available < 1) throw new Error('Aucune récompense disponible');
+            rewardsDelta = -1;
+          }
         }
-        message = `Récompense utilisée : ${program.reward_label || 'récompense'}. À bientôt !`;
+        message = `Récompense utilisée. À bientôt !`;
         break;
       }
       case 'adjustment': stampsDelta = 0; pointsDelta = Number(amount || 0); message = 'Ajustement effectué sur votre carte.'; break;
@@ -211,9 +230,20 @@ async function applyTransaction({ passId, type, amount, userId, locationId, comm
     }
 
     // ── Validate no negative balances ──
-    const newStamps = pass.stamps + stampsDelta;
-    const newPoints = Number(pass.points) + pointsDelta;
-    const newRewards = pass.rewards_available + rewardsDelta;
+    let newStamps = pass.stamps + stampsDelta;
+    let newPoints = Number(pass.points) + pointsDelta;
+    let newRewards = pass.rewards_available + rewardsDelta;
+    
+    // Normalize stamps if negative (consume available rewards)
+    if (program.type === 'stamps' && newStamps < 0) {
+      while (newStamps < 0 && newRewards > 0) {
+        newRewards--;
+        newStamps += program.stamps_required;
+        stampsDelta += program.stamps_required;
+        rewardsDelta--;
+      }
+    }
+
     if (newStamps < 0) throw new Error('Le solde de tampons ne peut pas devenir négatif');
     if (newPoints < 0) throw new Error('Le solde de points ne peut pas devenir négatif');
     if (newRewards < 0) throw new Error('Le solde de récompenses ne peut pas devenir négatif');
