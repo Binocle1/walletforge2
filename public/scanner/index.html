@@ -30,10 +30,12 @@ button{font-family:Sora;font-weight:600;cursor:pointer;border:none;border-radius
 .actions button{padding:14px 8px;font-size:14.5px;border-radius:12px;background:var(--pine);color:#fff}
 .actions button.warn{background:#fff;color:var(--danger);border:1.5px solid var(--danger)}
 .actions button.gold{background:var(--amber)}
-.amountRow{display:none;gap:10px;margin-top:12px}
-.amountRow.on{display:flex}
-.amountRow input{margin:0;flex:1;border:1px solid var(--line)}
-.amountRow button{padding:0 18px;background:var(--pine);color:#fff}
+/* Zone de saisie : clavier NATIF du téléphone (inputmode=decimal) */
+.amountBox{background:#1a332d;border-radius:14px;padding:14px;margin-top:14px}
+.amountBox label{display:block;font-size:12px;color:#7fa094;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
+.amountBox input{width:100%;font-size:30px;font-family:Sora;text-align:center;padding:12px;
+  border-radius:10px;border:2px solid #234a41;background:var(--ink);color:#fff;margin:0}
+.amountBox input:focus{outline:none;border-color:var(--ok)}
 .toastS{position:fixed;bottom:18px;left:50%;transform:translateX(-50%) translateY(80px);background:#fff;color:var(--ink);
   padding:14px 20px;border-radius:14px;font-weight:600;transition:.3s;width:90%;max-width:400px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.4);
   display:flex;justify-content:space-between;align-items:center;gap:10px}
@@ -41,14 +43,6 @@ button{font-family:Sora;font-weight:600;cursor:pointer;border:none;border-radius
 .recent{font-size:12.5px;color:var(--muted);margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
 .topbar{display:flex;justify-content:space-between;align-items:center}
 .topbar small{color:#7fa094}
-.numpad{position:fixed;inset:0;background:var(--ink);z-index:99;display:none;flex-direction:column;padding:20px}
-.numpad.on{display:flex}
-.np-val{font-size:48px;font-family:Sora;text-align:center;margin:40px 0;height:60px;line-height:60px}
-.np-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;flex:1}
-.np-grid button{background:#1a332d;color:#fff;font-size:28px;border-radius:16px;padding:20px 0}
-.np-grid button:active{background:#234a41}
-.np-ok{background:var(--ok)!important;color:#fff}
-.np-cancel{background:transparent!important;border:2px solid #1a332d!important;color:var(--muted)!important}
 </style>
 </head>
 <body>
@@ -81,6 +75,13 @@ button{font-family:Sora;font-weight:600;cursor:pointer;border:none;border-radius
       <h2 id="cName"></h2>
       <p style="color:var(--muted);font-size:13.5px" id="cProg"></p>
       <div class="balance" id="cBalance"></div>
+
+      <!-- Clavier natif du téléphone : pas de pavé maison -->
+      <div class="amountBox" id="amountBox">
+        <label id="amountLabel">Montant de l'achat (€)</label>
+        <input id="amount" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
+      </div>
+
       <div class="actions" id="cActions"></div>
 
       <div class="recent" id="cRecent"></div>
@@ -89,18 +90,6 @@ button{font-family:Sora;font-weight:600;cursor:pointer;border:none;border-radius
 </div>
 
 <!-- Numpad -->
-<div class="numpad" id="numpad">
-  <div class="np-val" id="npVal">0.00 €</div>
-  <div class="np-grid">
-    <button onclick="np('1')">1</button><button onclick="np('2')">2</button><button onclick="np('3')">3</button>
-    <button onclick="np('4')">4</button><button onclick="np('5')">5</button><button onclick="np('6')">6</button>
-    <button onclick="np('7')">7</button><button onclick="np('8')">8</button><button onclick="np('9')">9</button>
-    <button class="np-cancel" onclick="npCancel()">Annuler</button>
-    <button onclick="np('0')">0</button>
-    <button class="np-ok" onclick="npOk()">OK</button>
-  </div>
-</div>
-
 <div class="toastS" id="toastS">
   <span id="toastMsg"></span>
   <button id="toastUndoBtn" class="hide" style="padding:6px 12px;background:#c0392b;color:#fff;font-size:13px" onclick="undoTx()">Annuler</button>
@@ -321,24 +310,33 @@ function renderProfile() {
   }
   document.getElementById('cBalance').innerHTML = bal;
 
+  // Le champ montant n'a de sens que pour les programmes points / carte cadeau
+  const needsAmount = c.type !== 'stamps';
+  document.getElementById('amountBox').style.display = needsAmount ? '' : 'none';
+  document.getElementById('amountLabel').textContent =
+    c.type === 'giftcard' ? 'Montant en €' : 'Montant de l\'achat (€) ou nombre de points';
+  clearAmount();
+
   const acts = [];
   if (c.type === 'stamps') {
-    acts.push(`<button onclick="tx('purchase')">+ 1 coche</button>`);
-    acts.push(`<button class="warn" onclick="tx('remove_stamp')">− 1 coche</button>`);
+    acts.push(`<button onclick="tx('purchase')">+ 1 tampon (achat)</button>`);
+    acts.push(`<button class="warn" onclick="tx('remove_stamp')">− 1 tampon (corriger)</button>`);
   } else if (c.type === 'giftcard') {
-    acts.push(`<button class="gold" onclick="askAmount()">− Débiter (payer)</button>`);
-    acts.push(`<button onclick="askReload()">+ Recharger la carte</button>`);
+    acts.push(`<button class="gold" onclick="txAmount('purchase')">− Débiter le montant</button>`);
+    acts.push(`<button onclick="txAmount('add_points')">+ Recharger du montant</button>`);
   } else {
-    acts.push(`<button onclick="askAmount()">+ Achat (montant €)</button>`);
-    acts.push(`<button class="warn" onclick="askPoints()">− Retirer des points</button>`);
+    // Programme à points : achat (€ -> points) + ajout/retrait manuel de points
+    acts.push(`<button onclick="txAmount('purchase')">💶 Achat : convertir le montant en points</button>`);
+    acts.push(`<button onclick="txAmount('add_points')">+ Ajouter ce nombre de points</button>`);
+    acts.push(`<button class="warn" onclick="txAmount('remove_points')">− Retirer ce nombre de points</button>`);
   }
-  
+
   if (c.type !== 'giftcard') {
     if (c.automations && c.automations.multi_rewards && c.automations.multi_rewards.length > 0) {
       c.automations.multi_rewards.forEach(r => {
-        const balance = c.type === 'stamps' ? c.stamps + (c.rewards_available * c.stamps_required) : c.points;
+        const balance = c.type === 'stamps' ? c.stamps + (c.rewards_available * c.stamps_required) : Number(c.points);
         const canRedeem = balance >= r.threshold;
-        acts.push(`<button class="gold" ${canRedeem ? '' : 'disabled style="opacity:.4"'} onclick="tx('reward_redeemed', ${r.threshold})">🎁 Utiliser : ${esc(r.label)} (${r.threshold} ${c.type === 'stamps' ? 'c' : 'pts'})</button>`);
+        acts.push(`<button class="gold" ${canRedeem ? '' : 'disabled style="opacity:.4"'} onclick="tx('reward_redeemed', ${r.threshold})">🎁 ${esc(r.label)} (${r.threshold} ${c.type === 'stamps' ? 'tampons' : 'pts'})</button>`);
       });
     } else {
       const canRedeem = c.type === 'stamps' ? c.rewards_available > 0 : Number(c.points) >= c.points_for_reward;
@@ -351,36 +349,24 @@ function renderProfile() {
     (c.recent || []).map(r => `${new Date(r.created_at).toLocaleString('fr-FR')} — ${esc(r.type)}${r.amount ? ' ' + r.amount + '€' : ''}`).join('<br>') || '';
 }
 
-let pendingType = 'purchase';
-let npValue = '';
-function askAmount() { 
-  pendingType = 'purchase'; 
-  npValue = ''; 
-  document.getElementById('npVal').textContent = '0.00 €';
-  document.getElementById('numpad').classList.add('on'); 
+// ---------- Actions : le montant vient du clavier NATIF (#amount) ----------
+function readAmount() {
+  const el = document.getElementById('amount');
+  const v = Number(String(el.value).replace(',', '.'));
+  if (!Number.isFinite(v) || v <= 0) {
+    toast('Saisis un montant supérieur à 0', 1);
+    el.focus();
+    return null;
+  }
+  return Math.round(v * 100) / 100;
 }
-function askPoints() { 
-  pendingType = 'remove_points'; 
-  npValue = ''; 
-  document.getElementById('npVal').textContent = '0.00 pts';
-  document.getElementById('numpad').classList.add('on'); 
-}
-function askReload() {
-  pendingType = 'add_points'; 
-  npValue = ''; 
-  document.getElementById('npVal').textContent = '0.00 €';
-  document.getElementById('numpad').classList.add('on'); 
-}
-function np(digit) {
-  if (npValue.length > 5) return;
-  npValue += digit;
-  const val = (Number(npValue) / 100).toFixed(2);
-  document.getElementById('npVal').textContent = val + (pendingType === 'purchase' ? ' €' : ' pts');
-}
-function npCancel() { document.getElementById('numpad').classList.remove('on'); }
-function npOk() { 
-  document.getElementById('numpad').classList.remove('on');
-  tx(pendingType, Number(npValue) / 100); 
+function clearAmount() { document.getElementById('amount').value = ''; }
+
+// Action qui a besoin du champ montant
+function txAmount(type) {
+  const amount = readAmount();
+  if (amount === null) return;
+  tx(type, amount);
 }
 
 let returnTimer = null;
@@ -390,6 +376,7 @@ async function tx(type, amount) {
     const r = await api('/transactions', { method: 'POST', body: { pass_id: current.pass_id, type, amount, client_tx_id } });
     toast(r.message, false, r.tx_id);
     current.stamps = r.pass.stamps; current.points = r.pass.points; current.rewards_available = r.pass.rewards_available;
+    clearAmount();
     renderProfile();
     
     clearTimeout(returnTimer);
