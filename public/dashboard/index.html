@@ -43,7 +43,7 @@ label{display:block;font-size:13px;font-weight:600;color:var(--muted);margin:12p
 #app{display:none;grid-template-columns:220px 1fr;min-height:100vh}
 nav{background:var(--ink);padding:20px 14px;display:flex;flex-direction:column;gap:4px}
 nav .logo{color:#fff;padding:0 8px 14px}
-nav a{color:#b8ccc5;text-decoration:none;padding:10px 12px;border-radius:8px;font-size:14.5px;font-weight:500}
+nav a{color:#b8ccc5;text-decoration:none;padding:10px 12px;border-radius:8px;font-size:14.5px;font-weight:500;cursor:pointer}
 nav a.on,nav a:hover{background:rgba(255,255,255,.08);color:#fff}
 nav .cfg{margin-top:auto;font-size:12px;color:#7fa094;padding:10px 12px;border-top:1px solid rgba(255,255,255,.1)}
 nav .cfg span{display:block;margin-top:4px}
@@ -57,6 +57,8 @@ th{text-align:left;color:var(--muted);font-size:12px;text-transform:uppercase;le
 td{padding:10px;border-bottom:1px solid var(--line)}
 .pill{display:inline-block;padding:3px 9px;border-radius:20px;font-size:12px;font-weight:600}
 .pill.g{background:#e2f3ec;color:var(--ok)} .pill.a{background:#fdf1dd;color:var(--amber-deep)} .pill.n{background:#eee;color:#777}
+.pwd-wrap{position:relative;display:flex;align-items:center}
+.pwd-toggle{position:absolute;right:8px;background:none;border:none;cursor:pointer;padding:4px;font-size:16px;color:var(--muted);outline:none;line-height:1}
 .toast{position:fixed;bottom:22px;right:22px;background:var(--ink);color:#fff;padding:13px 18px;border-radius:10px;
   font-size:14px;opacity:0;transition:.3s;pointer-events:none;max-width:340px}
 .toast.show{opacity:1}
@@ -81,7 +83,11 @@ td{padding:10px;border-bottom:1px solid var(--line)}
     </div>
     <div id="formLogin">
       <label>Email ou Nom d'utilisateur</label><input id="lEmail" autocomplete="username">
-      <label>Mot de passe</label><input id="lPass" type="password" autocomplete="current-password">
+      <label>Mot de passe</label>
+      <div class="pwd-wrap">
+        <input id="lPass" type="password" autocomplete="current-password">
+        <button type="button" class="pwd-toggle" onclick="togglePwd('lPass')">👁️</button>
+      </div>
       <div style="text-align:right;margin-top:8px"><a href="#" onclick="showForgot()" style="font-size:13px;color:var(--pine)">Mot de passe oublié ?</a></div>
       <button class="btn" style="width:100%;margin-top:14px" onclick="login()">Se connecter</button>
     </div>
@@ -93,14 +99,22 @@ td{padding:10px;border-bottom:1px solid var(--line)}
     </div>
     <div id="formReset" style="display:none">
       <h2 style="font-size:18px;margin-bottom:10px">Nouveau mot de passe</h2>
-      <label>Entrez un nouveau mot de passe</label><input id="nPass" type="password">
+      <label>Entrez un nouveau mot de passe</label>
+      <div class="pwd-wrap">
+        <input id="nPass" type="password">
+        <button type="button" class="pwd-toggle" onclick="togglePwd('nPass')">👁️</button>
+      </div>
       <button class="btn amber" style="width:100%;margin-top:14px" onclick="resetPass()">Valider</button>
     </div>
     <div id="formReg" style="display:none">
       <label>Nom du commerce</label><input id="rBiz" placeholder="Café Gordon">
       <label>Ton nom</label><input id="rName">
       <label>Email</label><input id="rEmail" type="email">
-      <label>Mot de passe (8+ caractères)</label><input id="rPass" type="password">
+      <label>Mot de passe (8+ caractères)</label>
+      <div class="pwd-wrap">
+        <input id="rPass" type="password">
+        <button type="button" class="pwd-toggle" onclick="togglePwd('rPass')">👁️</button>
+      </div>
       <div class="row">
         <div style="flex:1"><label>Pays</label><input id="rCountry" value="FR"></div>
         <div style="flex:1"><label>Devise</label><input id="rCurrency" value="EUR"></div>
@@ -365,7 +379,11 @@ td{padding:10px;border-bottom:1px solid var(--line)}
   <h2 style="margin-bottom:14px">Nouveau membre</h2>
   <label>Nom complet</label><input id="tmName" placeholder="Paul (Caissier)">
   <label>Nom d'utilisateur (pour se connecter)</label><input id="tmUser" placeholder="paul_cafe">
-  <label>Mot de passe</label><input id="tmPass" type="password">
+  <label>Mot de passe</label>
+  <div class="pwd-wrap">
+    <input id="tmPass" type="password">
+    <button type="button" class="pwd-toggle" onclick="togglePwd('tmPass')">👁️</button>
+  </div>
   <label>Rôle</label>
   <select id="tmRole">
     <option value="cashier">Caissier (Scanner uniquement)</option>
@@ -445,6 +463,11 @@ function toast(msg, err) {
   t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3200);
 }
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function togglePwd(id) {
+  const el = document.getElementById(id);
+  el.type = el.type === 'password' ? 'text' : 'password';
+}
 
 // ---------- auth ----------
 function authTab(t) {
