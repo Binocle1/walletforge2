@@ -141,11 +141,18 @@ router.delete('/transactions/:id', required, roles(...CAN_SCAN), async (req, res
        VALUES ($1,$2,$3,$4,$5,$6,'cancel',$7,$8,$9,$10,'scanner') RETURNING id`,
       [t.tenant_id, t.pass_id, t.customer_id, t.program_id, t.location_id, t.user_id,
        null, invertedPointsDelta, invertedStampsDelta, `Annulation de ${t.id}`]);
+    // Check if cancellation would result in negative balance
+    const checkBal = await client.query('SELECT stamps, points, rewards_available FROM customer_passes WHERE id = $1', [t.pass_id]);
+    const pass = checkBal.rows[0];
+    if (pass.stamps + invertedStampsDelta < 0 || pass.points + invertedPointsDelta < 0 || pass.rewards_available + rewardsDelta < 0) {
+      throw new Error('Annulation impossible : le solde a déjà été consommé');
+    }
+
     await client.query(
       `UPDATE customer_passes 
-       SET stamps = greatest(0, stamps + $2), 
-           points = greatest(0, points + $3),
-           rewards_available = greatest(0, rewards_available + $4),
+       SET stamps = stamps + $2, 
+           points = points + $3,
+           rewards_available = rewards_available + $4,
            last_updated = now()
        WHERE id = $1`, [t.pass_id, invertedStampsDelta, invertedPointsDelta, rewardsDelta]);
     await client.query('COMMIT');

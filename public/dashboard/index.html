@@ -460,7 +460,7 @@ function toast(msg, err) {
   t.textContent = msg; t.style.background = err ? 'var(--danger)' : 'var(--ink)';
   t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3200);
 }
-const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const esc = (s) => String(s != null ? s : '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 function togglePwd(id) {
   const el = document.getElementById(id);
@@ -518,7 +518,8 @@ function go(s) {
   document.querySelectorAll('.section').forEach(x => x.classList.remove('on'));
   document.getElementById('s-' + s).classList.add('on');
   document.querySelectorAll('nav a[data-s]').forEach(a => a.classList.toggle('on', a.dataset.s === s));
-  ({ home: loadHome, programs: loadPrograms, customers: loadCustomers, tx: loadTx, stats: loadStats, notifs: loadNotifs, settings: loadBusiness })[s]?.();
+  const fns = { home: loadHome, programs: loadPrograms, customers: loadCustomers, tx: loadTx, stats: loadStats, notifs: loadNotifs, settings: loadBusiness };
+  if (fns[s]) fns[s]();
 }
 function openModal(id){document.getElementById(id).classList.add('on')}
 function closeModal(id){document.getElementById(id).classList.remove('on')}
@@ -531,11 +532,11 @@ async function loadHome() {
   const s = await api('/stats');
   document.getElementById('statCards').innerHTML = [
     ['Clients', s.total_customers], ['Nouveaux (30j)', s.new_customers_30d],
-    ['Taux de retour', (s.return_rate ?? 0) + ' %'], ['Panier moyen', (s.avg_basket ?? 0) + ' €'],
+    ['Taux de retour', (s.return_rate != null ? s.return_rate : 0) + ' %'], ['Panier moyen', (s.avg_basket != null ? s.avg_basket : 0) + ' €'],
     ['Cartes Apple', s.apple_installs], ['Cartes Google', s.google_installs],
     ['Transactions', s.total_transactions], ['CA déclaré', Number(s.total_amount || 0).toFixed(0) + ' €'],
     ['Notifications', s.notifications_sent], ['Non installées', s.not_installed],
-  ].map(([l, v]) => `<div class="card stat"><small>${l}</small><h2>${v ?? 0}</h2></div>`).join('');
+  ].map(([l, v]) => `<div class="card stat"><small>${l}</small><h2>${v != null ? v : 0}</h2></div>`).join('');
   const days = s.tx_by_day || [];
   const max = Math.max(1, ...days.map(d => d.n));
   document.getElementById('sparkline').innerHTML = days.length
@@ -677,7 +678,7 @@ async function loadCustomers() {
       <td><b>${esc(c.first_name)} ${esc(c.last_name || '')}</b><br><small style="color:var(--muted)">via ${esc(c.source)}</small></td>
       <td style="font-size:13px">${esc(c.email || '')}<br>${esc(c.phone || '')}</td>
       <td>${esc(p.program || '—')}</td>
-      <td>${p.type === 'stamps' ? (p.stamps ?? 0) + ' tampons' : Number(p.points ?? 0) + ' pts'}${p.rewards > 0 ? ` <span class="pill a">${p.rewards} 🎁</span>` : ''}</td>
+      <td>${p.type === 'stamps' ? (p.stamps != null ? p.stamps : 0) + ' tampons' : Number(p.points != null ? p.points : 0) + ' pts'}${p.rewards > 0 ? ` <span class="pill a">${p.rewards} 🎁</span>` : ''}</td>
       <td>${p.type === 'stamps' ? (c.stamps_total || 0) : c.visits}</td>
       <td style="font-size:13px">${c.last_visit ? new Date(c.last_visit).toLocaleDateString('fr-FR') : '—'}</td>
       <td>${wallet}</td>

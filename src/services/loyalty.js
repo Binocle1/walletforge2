@@ -289,15 +289,18 @@ async function applyTransaction({ passId, type, amount, userId, locationId, comm
     if (['purchase', 'add_stamp', 'add_points'].includes(type)) {
        const txCountRes = await db.query(`SELECT count(*)::int as n FROM transactions WHERE pass_id = $1 AND type IN ('purchase','add_stamp','add_points')`, [passId]);
        if (txCountRes.rows[0].n === 1 && pass.source) {
-          // It's the first real purchase. Find the referrer
-          const ref = await db.query(`SELECT id FROM customer_passes WHERE serial_number = $1 AND tenant_id = $2`, [pass.source, ctx.tenantId]);
-          if (ref.rows[0]) {
-             // Add a referral bonus directly via internal call
-             const pType = program.type;
-             const tType = pType === 'stamps' ? 'add_stamp' : 'add_points';
-             const amt = pType === 'points' ? (program.points_per_unit || 1) : 0;
-             await applyTransaction({ passId: ref.rows[0].id, type: tType, amount: amt, source: 'referral', comment: 'Bonus parrainage (1er achat du filleul)' });
-          }
+           // It's the first real purchase. Find the referrer
+           const ref = await db.query(`SELECT id, customer_id FROM customer_passes WHERE serial_number = $1 AND tenant_id = $2`, [pass.source, ctx.tenantId]);
+           if (ref.rows[0] && ref.rows[0].customer_id !== pass.customer_id) {
+              // Anti-farming: max 10 referrals per month
+              const countRef = await db.query(`SELECT count(*)::int as n FROM transactions WHERE pass_id = $1 AND type IN ('add_stamp', 'add_points') AND source = 'referral' AND created_at > date_trunc('month', now())`, [ref.rows[0].id]);
+              if (countRef.rows[0].n < 10) {
+                 const pType = program.type;
+                 const tType = pType === 'stamps' ? 'add_stamp' : 'add_points';
+                 const amt = pType === 'points' ? (program.points_per_unit || 1) : 0;
+                 await applyTransaction({ passId: ref.rows[0].id, type: tType, amount: amt, source: 'referral', comment: 'Bonus parrainage (1er achat du filleul)' });
+              }
+           }
        }
     }
 

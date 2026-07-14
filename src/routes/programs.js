@@ -106,8 +106,10 @@ router.get('/business/profile', required, async (req, res) => {
 router.patch('/business/profile', required, roles('owner', 'admin'), async (req, res) => {
   const allowed = ['name', 'business_type', 'country', 'currency', 'phone', 'website', 'address',
                    'logo_url', 'brand_color', 'text_color', 'google_review_url', 'social_links', 'back_links'];
+  if (req.body.name && req.body.name.length > 100) return res.status(400).json({ error: 'Nom trop long' });
   const sets = [], vals = [req.auth.tid];
   for (const k of allowed) if (k in req.body) {
+    if (typeof req.body[k] === 'string' && req.body[k].length > 1000) return res.status(400).json({ error: `Champ ${k} trop long` });
     vals.push(['social_links', 'back_links'].includes(k) ? JSON.stringify(req.body[k]) : req.body[k]);
     sets.push(`${k} = $${vals.length}`);
   }
