@@ -411,7 +411,17 @@ async function undoTx() {
 }
 
 if (TOKEN) { startScan(); syncQueue(); }
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+// Nettoyage : on désinstalle tout ancien service worker et on vide son cache.
+// (Il servait une version périmée du scanner, et sa version "kill switch"
+//  forçait un rechargement en boucle -> la page ne chargeait plus.)
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations()
+    .then((regs) => regs.forEach((r) => r.unregister()))
+    .catch(() => {});
+}
+if (window.caches) {
+  caches.keys().then((ks) => ks.forEach((k) => caches.delete(k))).catch(() => {});
+}
 </script>
 </body>
 </html>
