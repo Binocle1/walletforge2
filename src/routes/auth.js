@@ -61,6 +61,16 @@ router.post('/login', bruteForceGuard, async (req, res) => {
     req.loginFail();
     return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
   }
+
+  // Check if tenant is frozen
+  if (user.tenant_id) {
+    const t = await db.query('SELECT is_frozen FROM tenants WHERE id = $1', [user.tenant_id]);
+    if (t.rows[0]?.is_frozen && user.role !== 'superadmin') {
+      req.loginFail();
+      return res.status(403).json({ error: 'Ce commerce a été suspendu par l\'administration.' });
+    }
+  }
+
   req.loginOk();
   await db.query(`INSERT INTO audit_logs (tenant_id, user_id, action, ip) VALUES ($1,$2,'login',$3)`,
     [user.tenant_id, user.id, req.ip]);

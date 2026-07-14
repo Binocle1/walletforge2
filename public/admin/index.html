@@ -7,38 +7,81 @@
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{
-  --ink:#10231f; --pine:#16453a; --mist:#eef4f1; --paper:#fbfdfc;
-  --line:#d8e4de; --text:#22332e; --muted:#6b7f78; --danger:#c0392b;
+  --ink:#10231f; --pine:#16453a; --pine-soft:#1d5a4b; --mist:#eef4f1; --paper:#fbfdfc;
+  --line:#d8e4de; --text:#22332e; --muted:#6b7f78; --danger:#c0392b; --amber:#e8a33d;
 }
 *{box-sizing:border-box;margin:0}
 body{font-family:Inter,system-ui,sans-serif;background:var(--mist);color:var(--text);padding:20px}
 h1,h2{font-family:Sora,sans-serif;color:var(--ink);margin-bottom:16px}
+.header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px; }
+.search-input { padding: 10px 16px; border: 1px solid var(--line); border-radius: 8px; width: 300px; max-width: 100%; font-family: inherit; font-size: 15px; }
+.search-input:focus { outline: 2px solid var(--pine-soft); border-color: transparent; }
+.tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+.tabs button { padding: 8px 16px; border: 1px solid var(--line); background: var(--paper); color: var(--muted); border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.2s; }
+.tabs button.active { background: var(--pine); color: #fff; border-color: var(--pine); }
 .card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:22px;margin-bottom:20px;overflow-x:auto}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th{text-align:left;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em;padding:8px 10px;border-bottom:1px solid var(--line)}
-td{padding:10px;border-bottom:1px solid var(--line)}
-button{background:var(--pine);color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px}
-.toast{position:fixed;bottom:22px;right:22px;background:var(--ink);color:#fff;padding:13px 18px;border-radius:10px;font-size:14px;opacity:0;transition:.3s;pointer-events:none}
+td{padding:10px;border-bottom:1px solid var(--line); vertical-align: middle;}
+.btn{background:var(--pine);color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500}
+.btn:hover{background:var(--pine-soft)}
+.btn.danger{background:var(--danger)}
+.btn.ghost{background:transparent;color:var(--pine);border:1px solid var(--line)}
+.btn.sm{padding:4px 8px;font-size:12px}
+.pill { display: inline-block; padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+.pill.active { background: #e0f2f1; color: #00695c; }
+.pill.frozen { background: #ffebee; color: #c62828; }
+.toast{position:fixed;bottom:22px;right:22px;background:var(--ink);color:#fff;padding:13px 18px;border-radius:10px;font-size:14px;opacity:0;transition:.3s;pointer-events:none;z-index:9999}
 .toast.show{opacity:1}
+.view { display: none; }
+.view.active { display: block; }
+/* Modal */
+.modal { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.5); z-index:100; align-items:center; justify-content:center; }
+.modal.on { display: flex; }
+.modal-box { background: #fff; padding: 24px; border-radius: 16px; width: 100%; max-width: 800px; max-height: 90vh; overflow-y: auto; }
+.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 </style>
 </head>
 <body>
 
-<h1>Portail Super Admin</h1>
-<div class="card">
-  <h2>Commerces inscrits</h2>
+<div class="header-bar">
+  <h1>Portail Super Admin</h1>
+  <input type="text" id="searchInput" class="search-input" placeholder="Rechercher (nom, email, tenant)..." onkeyup="renderViews()">
+</div>
+
+<div class="tabs">
+  <button id="tab-tenants" class="active" onclick="switchTab('tenants')">Magasins</button>
+  <button id="tab-users" onclick="switchTab('users')">Utilisateurs Globaux</button>
+</div>
+
+<div id="view-tenants" class="view active card">
+  <h2>Commerces inscrits (<span id="tenantCount">0</span>)</h2>
   <table id="tTenants">
-    <thead><tr><th>ID</th><th>Tenant</th><th>Commerce</th><th>Inscrit le</th><th>Users</th><th>Cartes</th><th>Transactions</th></tr></thead>
+    <thead><tr><th>ID</th><th>Commerce</th><th>Statut</th><th>Inscrit le</th><th>Statistiques</th><th>Actions</th></tr></thead>
     <tbody></tbody>
   </table>
 </div>
 
-<div class="card">
-  <h2>Utilisateurs</h2>
+<div id="view-users" class="view card">
+  <h2>Utilisateurs Globaux (<span id="userCount">0</span>)</h2>
   <table id="tUsers">
-    <thead><tr><th>Email</th><th>Nom</th><th>Rôle</th><th>Tenant</th><th>Inscrit le</th><th>Action</th></tr></thead>
+    <thead><tr><th>Email</th><th>Nom</th><th>Rôle</th><th>Commerce</th><th>Inscrit le</th><th>Action</th></tr></thead>
     <tbody></tbody>
   </table>
+</div>
+
+<!-- Modal pour voir les vendeurs d'un magasin -->
+<div id="mVendors" class="modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h2 id="mVendorsTitle">Vendeurs du magasin</h2>
+      <button class="btn ghost" onclick="closeModal('mVendors')">Fermer</button>
+    </div>
+    <table id="tVendors">
+      <thead><tr><th>Nom</th><th>Email / Username</th><th>Rôle</th><th>Date d'ajout</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -46,6 +89,9 @@ button{background:var(--pine);color:#fff;border:none;padding:6px 12px;border-rad
 <script>
 let TOKEN = localStorage.getItem('wf_token');
 if (!TOKEN) { alert('Connectez-vous sur le dashboard d\'abord.'); location.href = '/dashboard'; }
+
+let allTenants = [];
+let allUsers = [];
 
 async function api(path, opts = {}) {
   const res = await fetch('/api/admin' + path, {
@@ -67,32 +113,106 @@ function toast(msg) {
 }
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
+function openModal(id) { document.getElementById(id).classList.add('on'); }
+function closeModal(id) { document.getElementById(id).classList.remove('on'); }
+window.onclick = function(e) { if (e.target.classList.contains('modal')) e.target.classList.remove('on'); }
+
+function switchTab(tab) {
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-' + tab).classList.add('active');
+}
+
 async function loadData() {
   try {
-    const tenants = await api('/tenants');
-    document.querySelector('#tTenants tbody').innerHTML = tenants.map(t => `<tr>
-      <td>${t.tenant_id}</td>
-      <td>${esc(t.tenant_name)}</td>
-      <td>${esc(t.business_name)}</td>
-      <td>${new Date(t.created_at).toLocaleDateString()}</td>
-      <td>${t.users_count}</td>
-      <td>${t.passes_count}</td>
-      <td>${t.tx_count}</td>
-    </tr>`).join('');
-
-    const users = await api('/users');
-    document.querySelector('#tUsers tbody').innerHTML = users.map(u => `<tr>
-      <td>${esc(u.email)}</td>
-      <td>${esc(u.full_name)}</td>
-      <td>${u.role}</td>
-      <td>${esc(u.tenant_name)}</td>
-      <td>${new Date(u.created_at).toLocaleDateString()}</td>
-      <td>
-        <button onclick="setRole('${u.id}', 'superadmin')" ${u.role==='superadmin'?'disabled style="opacity:0.5"':''}>Promouvoir Admin</button>
-      </td>
-    </tr>`).join('');
+    allTenants = await api('/tenants');
+    allUsers = await api('/users');
+    renderViews();
   } catch (e) {
     console.error(e);
+  }
+}
+
+function renderViews() {
+  const q = document.getElementById('searchInput').value.toLowerCase();
+
+  // Tenants
+  const filteredTenants = allTenants.filter(t => 
+    (t.tenant_name || '').toLowerCase().includes(q) || 
+    (t.business_name || '').toLowerCase().includes(q) ||
+    t.tenant_id.toLowerCase().includes(q)
+  );
+  document.getElementById('tenantCount').textContent = filteredTenants.length;
+  document.querySelector('#tTenants tbody').innerHTML = filteredTenants.map(t => `<tr>
+    <td style="font-size:11px;color:var(--muted)">${t.tenant_id.split('-')[0]}...</td>
+    <td>
+      <strong>${esc(t.business_name)}</strong><br>
+      <small style="color:var(--muted)">${esc(t.tenant_name)}</small>
+    </td>
+    <td>${t.is_frozen 
+      ? '<span class="pill frozen">Gelé</span>' 
+      : '<span class="pill active">Actif</span>'}
+    </td>
+    <td>${new Date(t.created_at).toLocaleDateString()}</td>
+    <td style="font-size:12px;color:var(--muted)">
+      Users: <b>${t.users_count}</b><br>
+      Cartes: <b>${t.passes_count}</b><br>
+      Tx: <b>${t.tx_count}</b>
+    </td>
+    <td style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn sm ghost" onclick="showVendors('${t.tenant_id}', '${esc(t.business_name).replace(/'/g, "\\'")}')">Vendeurs</button>
+      <button class="btn sm ${t.is_frozen ? 'ghost' : 'danger'}" onclick="toggleFreeze('${t.tenant_id}', ${!t.is_frozen})">
+        ${t.is_frozen ? 'Dégeler' : 'Geler'}
+      </button>
+    </td>
+  </tr>`).join('');
+
+  // Users
+  const filteredUsers = allUsers.filter(u => 
+    (u.email || '').toLowerCase().includes(q) || 
+    (u.full_name || '').toLowerCase().includes(q) ||
+    (u.username || '').toLowerCase().includes(q) ||
+    (u.tenant_name || '').toLowerCase().includes(q)
+  );
+  document.getElementById('userCount').textContent = filteredUsers.length;
+  document.querySelector('#tUsers tbody').innerHTML = filteredUsers.map(u => `<tr>
+    <td>${esc(u.email || u.username)}</td>
+    <td>${esc(u.full_name)}</td>
+    <td>${u.role}</td>
+    <td>${esc(u.tenant_name)}</td>
+    <td>${new Date(u.created_at).toLocaleDateString()}</td>
+    <td>
+      <button class="btn sm ghost" onclick="setRole('${u.id}', 'superadmin')" ${u.role==='superadmin'?'disabled style="opacity:0.5"':''}>+ Admin</button>
+    </td>
+  </tr>`).join('');
+}
+
+async function toggleFreeze(id, freeze) {
+  const action = freeze ? 'geler' : 'dégeler';
+  if (!confirm(`Voulez-vous vraiment ${action} ce commerce ?`)) return;
+  try {
+    await api(`/tenants/${id}/freeze`, { method: 'PATCH', body: { is_frozen: freeze } });
+    toast(`Commerce ${action} avec succès`);
+    await loadData();
+  } catch(e) { alert(e.message); }
+}
+
+async function showVendors(tenantId, businessName) {
+  document.getElementById('mVendorsTitle').textContent = `Vendeurs - ${businessName}`;
+  document.querySelector('#tVendors tbody').innerHTML = '<tr><td colspan="4">Chargement...</td></tr>';
+  openModal('mVendors');
+  try {
+    const users = await api(`/tenants/${tenantId}/users`);
+    document.querySelector('#tVendors tbody').innerHTML = users.map(u => `<tr>
+      <td>${esc(u.full_name)}</td>
+      <td>${esc(u.email || u.username)}</td>
+      <td>${u.role}</td>
+      <td>${new Date(u.created_at).toLocaleDateString()}</td>
+    </tr>`).join('') || '<tr><td colspan="4" style="color:var(--muted)">Aucun vendeur.</td></tr>';
+  } catch(e) {
+    document.querySelector('#tVendors tbody').innerHTML = `<tr><td colspan="4" style="color:var(--danger)">Erreur de chargement</td></tr>`;
+    toast(e.message, 1);
   }
 }
 
@@ -101,10 +221,8 @@ async function setRole(id, role) {
   try {
     await api('/users/' + id + '/role', { method: 'PATCH', body: { role } });
     toast('Rôle modifié avec succès');
-    loadData();
-  } catch(e) {
-    alert(e.message);
-  }
+    await loadData();
+  } catch(e) { alert(e.message); }
 }
 
 loadData();

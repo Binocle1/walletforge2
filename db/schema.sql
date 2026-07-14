@@ -15,6 +15,7 @@ CREATE TABLE tenants (
   stripe_customer_id     TEXT,
   stripe_subscription_id TEXT,
   subscription_status    TEXT DEFAULT 'trialing',        -- trialing | active | past_due | canceled
+  is_frozen     BOOLEAN NOT NULL DEFAULT false,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

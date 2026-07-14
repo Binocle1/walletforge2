@@ -70,15 +70,21 @@ async function applyTransaction({ passId, type, amount, userId, locationId, comm
               pr.reward_label, pr.points_per_unit, pr.points_for_reward, pr.card_design, pr.barcode_type,
               pr.automations AS pr_automations,
               b.id AS b_id, b.name AS b_name, b.brand_color, b.text_color, b.logo_url, b.back_links,
-              b.currency, b.country, b.tenant_id AS b_tenant
+              b.currency, b.country, b.tenant_id AS b_tenant,
+              tn.is_frozen
        FROM customer_passes p
        JOIN customers c ON c.id = p.customer_id
        JOIN loyalty_programs pr ON pr.id = p.program_id
        JOIN businesses b ON b.id = pr.business_id
+       JOIN tenants tn ON tn.id = p.tenant_id
        WHERE p.id = $1
        FOR UPDATE OF p`, [passId]);
     if (!ctxRows[0]) throw new Error('Carte introuvable');
     const r = ctxRows[0];
+    if (r.is_frozen) {
+      await client.query('ROLLBACK');
+      throw new Error('Action impossible : Ce commerce est temporairement suspendu.');
+    }
     const locs = await client.query('SELECT latitude, longitude, relevant_text FROM locations WHERE business_id = $1 AND latitude IS NOT NULL', [r.b_id]);
     const ctx = {
       pass: r,
