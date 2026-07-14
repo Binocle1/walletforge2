@@ -11,7 +11,7 @@ async function loadPassContext(passId) {
   const { rows } = await db.query(
     `SELECT p.*, c.first_name, c.last_name, c.email AS customer_email,
             pr.id AS pr_id, pr.name AS pr_name, pr.type AS pr_type, pr.stamps_required,
-            pr.reward_label, pr.points_per_unit, pr.points_for_reward, pr.card_design, pr.barcode_type,
+            pr.reward_label, pr.points_per_unit, pr.points_for_reward, pr.tiers, pr.card_design, pr.barcode_type,
             pr.automations AS pr_automations,
             b.id AS b_id, b.name AS b_name, b.brand_color, b.text_color, b.logo_url, b.back_links,
             b.currency, b.country, b.tenant_id AS b_tenant
@@ -28,7 +28,7 @@ async function loadPassContext(passId) {
     customer: { id: r.customer_id, first_name: r.first_name, last_name: r.last_name, email: r.customer_email },
     program: { id: r.pr_id, name: r.pr_name, type: r.pr_type, stamps_required: r.stamps_required,
                reward_label: r.reward_label, points_per_unit: r.points_per_unit,
-               points_for_reward: r.points_for_reward, card_design: r.card_design, barcode_type: r.barcode_type,
+               points_for_reward: r.points_for_reward, tiers: r.tiers || [], card_design: r.card_design, barcode_type: r.barcode_type,
                automations: r.pr_automations || {} },
     business: { id: r.b_id, name: r.b_name, brand_color: r.brand_color, text_color: r.text_color,
                 logo_url: r.logo_url, back_links: r.back_links, currency: r.currency, country: r.country },
@@ -67,7 +67,7 @@ async function applyTransaction({ passId, type, amount, userId, locationId, comm
     const { rows: ctxRows } = await client.query(
       `SELECT p.*, c.first_name, c.last_name, c.email AS customer_email,
               pr.id AS pr_id, pr.name AS pr_name, pr.type AS pr_type, pr.stamps_required,
-              pr.reward_label, pr.points_per_unit, pr.points_for_reward, pr.card_design, pr.barcode_type,
+              pr.reward_label, pr.points_per_unit, pr.points_for_reward, pr.tiers, pr.card_design, pr.barcode_type,
               pr.automations AS pr_automations,
               b.id AS b_id, b.name AS b_name, b.brand_color, b.text_color, b.logo_url, b.back_links,
               b.currency, b.country, b.tenant_id AS b_tenant,
@@ -91,7 +91,7 @@ async function applyTransaction({ passId, type, amount, userId, locationId, comm
       customer: { id: r.customer_id, first_name: r.first_name, last_name: r.last_name, email: r.customer_email },
       program: { id: r.pr_id, name: r.pr_name, type: r.pr_type, stamps_required: r.stamps_required,
                  reward_label: r.reward_label, points_per_unit: r.points_per_unit,
-                 points_for_reward: r.points_for_reward, card_design: r.card_design, barcode_type: r.barcode_type,
+                 points_for_reward: r.points_for_reward, tiers: r.tiers || [], card_design: r.card_design, barcode_type: r.barcode_type,
                  automations: r.pr_automations || {} },
       business: { id: r.b_id, name: r.b_name, brand_color: r.brand_color, text_color: r.text_color,
                   logo_url: r.logo_url, back_links: r.back_links, currency: r.currency, country: r.country },
@@ -147,15 +147,7 @@ async function applyTransaction({ passId, type, amount, userId, locationId, comm
           message = `${spend.toFixed(2)} € débités. Nouveau solde : ${(Number(pass.points) - spend).toFixed(2)} €`;
         } else if (program.type === 'stamps') {
           stampsDelta = 1 * multiplier;
-          const newStamps = pass.stamps + stampsDelta;
-          if (newStamps >= program.stamps_required) {
-            rewardsDelta = Math.floor(newStamps / program.stamps_required);
-            stampsDelta = (newStamps % program.stamps_required) - pass.stamps; // keep remainder
-            message = `🎉 ${rewardsDelta > 1 ? rewardsDelta + ' récompenses débloquées' : 'Récompense débloquée'} !`;
-          } else {
-            const left = program.stamps_required - newStamps;
-            message = `Merci ! Plus que ${left} tampon${left > 1 ? 's' : ''} avant votre récompense.`;
-          }
+          message = `Merci ! ${stampsDelta} tampon(s) ajouté(s).`;
         } else {
           const pts = Math.round(Number(amount || 0) * Number(program.points_per_unit || 1) * multiplier * 100) / 100;
           pointsDelta = pts;

@@ -39,8 +39,7 @@ function buildPassJson(ctx) {
 
   if (program.type === 'stamps') {
     fields.push(
-      { key: 'stamps', label: 'TAMPONS', value: `${pass.stamps} / ${program.stamps_required}` },
-      { key: 'reward', label: 'RÉCOMPENSE', value: program.reward_label || 'Récompense' }
+      { key: 'stamps', label: 'TAMPONS', value: `${pass.stamps} tampon${pass.stamps > 1 ? 's' : ''}` }
     );
   } else if (program.type === 'giftcard') {
     fields.push(
@@ -48,8 +47,7 @@ function buildPassJson(ctx) {
     );
   } else {
     fields.push(
-      { key: 'points', label: 'POINTS', value: String(Number(pass.points)) },
-      { key: 'reward', label: 'OBJECTIF', value: `${program.points_for_reward} pts → ${program.reward_label || 'récompense'}` }
+      { key: 'points', label: 'POINTS', value: String(Number(pass.points)) }
     );
   }
   if (pass.rewards_available > 0) {

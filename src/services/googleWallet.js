@@ -126,7 +126,7 @@ function buildObject(ctx) {
     accountName: `${customer.first_name} ${customer.last_name || ''}`.trim(),
     loyaltyPoints: {
       label: isStamps ? 'Tampons' : 'Points',
-      balance: isStamps ? { string: `${pass.stamps}/${program.stamps_required}` } : { string: String(Number(pass.points)) },
+      balance: isStamps ? { string: `${pass.stamps}` } : { string: String(Number(pass.points)) },
     },
     secondaryLoyaltyPoints: pass.rewards_available > 0
       ? { label: 'Récompenses à utiliser', balance: { string: String(pass.rewards_available) } }

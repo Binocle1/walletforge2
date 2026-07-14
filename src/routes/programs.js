@@ -15,7 +15,7 @@ router.get('/', required, async (req, res) => {
 
 // POST /api/programs — création
 router.post('/', required, roles('owner', 'admin'), async (req, res) => {
-  const { name, type, stamps_required, reward_label, points_per_unit, points_for_reward, card_design, barcode_type } = req.body;
+  const { name, type, stamps_required, reward_label, points_per_unit, points_for_reward, card_design, barcode_type, tiers } = req.body;
   if (!name || !['stamps', 'points', 'giftcard'].includes(type)) {
     return res.status(400).json({ error: 'Nom et type (stamps, points ou giftcard) requis' });
   }
@@ -31,13 +31,14 @@ router.post('/', required, roles('owner', 'admin'), async (req, res) => {
   const b = await db.query('SELECT id FROM businesses WHERE tenant_id = $1 LIMIT 1', [req.auth.tid]);
   const { rows } = await db.query(
     `INSERT INTO loyalty_programs (tenant_id, business_id, name, type, stamps_required, reward_label,
-                                   points_per_unit, points_for_reward, card_design, barcode_type)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+                                   points_per_unit, points_for_reward, card_design, barcode_type, tiers)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
     [req.auth.tid, b.rows[0].id, name, type,
      type === 'stamps' ? (stamps_required || 10) : null, reward_label || null,
      type === 'points' ? (points_per_unit || 1) : null,
      type === 'points' ? (points_for_reward || 100) : null,
-     card_design || {}, barcode_type || 'qr']);
+     card_design || {}, barcode_type || 'qr',
+     tiers ? JSON.stringify(tiers) : '[]']);
   res.json(rows[0]);
 });
 
@@ -161,9 +162,9 @@ router.get('/:id', required, async (req, res) => {
 
 // PATCH /api/programs/:id
 router.patch('/:id', required, roles('owner', 'admin'), async (req, res) => {
-  const allowed = ['name', 'active', 'stamps_required', 'reward_label', 'points_per_unit', 'points_for_reward', 'card_design', 'barcode_type', 'automations'];
+  const allowed = ['name', 'active', 'stamps_required', 'reward_label', 'points_per_unit', 'points_for_reward', 'card_design', 'barcode_type', 'automations', 'tiers'];
   const sets = [], vals = [req.params.id, req.auth.tid];
-  for (const k of allowed) if (k in req.body) { vals.push(['card_design', 'automations'].includes(k) ? JSON.stringify(req.body[k]) : req.body[k]); sets.push(`${k} = $${vals.length}`); }
+  for (const k of allowed) if (k in req.body) { vals.push(['card_design', 'automations', 'tiers'].includes(k) ? JSON.stringify(req.body[k]) : req.body[k]); sets.push(`${k} = $${vals.length}`); }
   if (!sets.length) return res.status(400).json({ error: 'Rien à modifier' });
   try {
     const { rows } = await db.query(

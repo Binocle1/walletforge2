@@ -202,7 +202,8 @@ function startScan() {
   scanner = new Html5Qrcode('reader');
   scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 230, height: 230 } },
     (text) => { scanner.pause(true); openSerial(text); },
-    () => {}).catch(() => {
+    () => {}).catch((err) => {
+      alert("Erreur Caméra : " + (err.message || err));
       document.getElementById('reader').innerHTML =
         '<p style="padding:20px;color:#7fa094;font-size:14px">Caméra indisponible — utilise la recherche manuelle ci-dessous.</p>';
     });

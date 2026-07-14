@@ -83,6 +83,8 @@ CREATE TABLE loyalty_programs (
   reward_label      TEXT,                        -- ex "11e café offert"
   points_per_unit   NUMERIC(10,2),               -- points : 1 unité monnaie = X points
   points_for_reward INT,                         -- points nécessaires pour convertir
+  tiers             JSONB NOT NULL DEFAULT '[]', -- [{ threshold: 10, name: "Café" }, ...]
+
   -- design de la carte wallet
   card_design   JSONB NOT NULL DEFAULT '{}',     -- {bg_color, text_color, label_color, logo_url, strip_url, description, terms}
   barcode_type  TEXT NOT NULL DEFAULT 'qr',      -- qr | code128
