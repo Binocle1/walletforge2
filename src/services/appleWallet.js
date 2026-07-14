@@ -56,6 +56,8 @@ function buildPassJson(ctx) {
     { key: 'holder', label: 'Titulaire', value: `${customer.first_name} ${customer.last_name || ''}`.trim() },
     ...(business.back_links || []).map((l, i) => ({ key: `link${i}`, label: l.label, value: l.url })),
     { key: 'terms', label: 'Conditions', value: design.terms || 'Programme de fidélité — voir en boutique.' },
+    { key: 'feedback', label: 'Donner votre avis', value: `${process.env.BASE_URL}/api/customers/public/feedback/${pass.id}` },
+    { key: 'unsubscribe', label: 'Gérer vos notifications (RGPD)', value: `${process.env.BASE_URL}/api/customers/public/unsubscribe/${pass.id}` }
   ];
 
   const now = new Date();

@@ -133,6 +133,13 @@ td{padding:10px;border-bottom:1px solid var(--line)}
         <h3 style="margin-bottom:10px">Transactions — 30 derniers jours</h3>
         <div id="sparkline" style="display:flex;align-items:flex-end;gap:3px;height:90px"></div>
       </div>
+      <div class="card" style="margin-top:16px; border-color: var(--danger)" id="alertsCard">
+        <h3 style="margin-bottom:10px; color: var(--danger)">⚠️ Alertes & Sécurité</h3>
+        <table style="font-size:13px; width: 100%">
+          <thead><tr><th>Date</th><th>Client / Pass</th><th>Type</th><th>Description</th></tr></thead>
+          <tbody id="tAlerts"></tbody>
+        </table>
+      </div>
     </div>
 
     <div class="section" id="s-programs">
@@ -506,6 +513,21 @@ async function loadHome() {
   document.getElementById('sparkline').innerHTML = days.length
     ? days.map(d => `<div title="${d.day} : ${d.n}" style="flex:1;background:var(--pine);border-radius:3px 3px 0 0;height:${(d.n / max) * 100}%"></div>`).join('')
     : '<p style="color:var(--muted);font-size:14px">Aucune transaction pour le moment — scanne ta première carte pour voir la courbe s\'animer.</p>';
+
+  // Load Alerts
+  const alerts = await api('/alerts').catch(() => []);
+  const card = document.getElementById('alertsCard');
+  if (alerts.length > 0) {
+    card.style.display = 'block';
+    document.getElementById('tAlerts').innerHTML = alerts.map(a => `<tr>
+      <td>${new Date(a.created_at).toLocaleString('fr-FR')}</td>
+      <td>${esc(a.first_name)} ${esc(a.last_name || '')}<br><small style="color:var(--muted)">${esc(a.serial_number)}</small></td>
+      <td><b>${esc(a.type)}</b></td>
+      <td>${esc(a.description)}</td>
+    </tr>`).join('');
+  } else {
+    card.style.display = 'none';
+  }
 }
 
 // ---------- programs ----------

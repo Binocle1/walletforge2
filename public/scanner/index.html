@@ -230,7 +230,15 @@ async function openSerial(serial) {
 
 function renderProfile() {
   const c = current;
-  document.getElementById('cName').textContent = `${c.first_name} ${c.last_name || ''}`;
+  let badges = '';
+  if (c.tags && c.tags.length) {
+    const vip = c.tags.find(t => t.startsWith('VIP'));
+    if (vip) badges += `<span style="background:var(--amber);color:#fff;padding:2px 6px;border-radius:4px;font-size:11px;margin-left:8px;vertical-align:middle">${vip}</span>`;
+  }
+  if (c.current_streak >= 1) {
+    badges += `<span style="background:#ff6b6b;color:#fff;padding:2px 6px;border-radius:4px;font-size:11px;margin-left:8px;vertical-align:middle">🔥 Streak: ${c.current_streak}</span>`;
+  }
+  document.getElementById('cName').innerHTML = `${esc(c.first_name)} ${esc(c.last_name || '')} ${badges}`;
   document.getElementById('cProg').textContent = c.program_name;
   const bal = c.type === 'stamps'
     ? `<div><b>${c.stamps}/${c.stamps_required}</b><small>Tampons</small></div>`

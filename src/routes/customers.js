@@ -3,6 +3,66 @@ const db = require('../db');
 const { required, roles } = require('../auth');
 const loyalty = require('../services/loyalty');
 
+// ---------- PUBLIC : Désinscription RGPD ----------
+router.get('/public/unsubscribe/:passId', async (req, res) => {
+  const { rows } = await db.query(
+    `UPDATE customer_passes p
+     SET marketing_consent = false, last_updated = now()
+     FROM customers c
+     WHERE c.id = p.customer_id AND p.id = $1
+     RETURNING c.id AS customer_id`, [req.params.passId]
+  );
+  if (!rows[0]) return res.status(404).send('Pass introuvable');
+  
+  await db.query(
+    `UPDATE customers SET marketing_consent = false, consent_history = consent_history || $1::jsonb WHERE id = $2`,
+    [JSON.stringify([{ marketing: false, at: new Date().toISOString(), via: 'unsubscribe_link' }]), rows[0].customer_id]
+  );
+  res.send('<html><body style="font-family:sans-serif;text-align:center;padding:50px"><h1>Désinscription confirmée</h1><p>Vous ne recevrez plus de notifications marketing.</p></body></html>');
+});
+
+// ---------- PUBLIC : Boucle d'avis Google intelligente ----------
+router.get('/public/feedback/:passId', async (req, res) => {
+  const { rows } = await db.query(
+    `SELECT b.name, b.google_review_url FROM customer_passes p
+     JOIN loyalty_programs pr ON pr.id = p.program_id
+     JOIN businesses b ON b.id = pr.business_id
+     WHERE p.id = $1`, [req.params.passId]);
+  if (!rows[0]) return res.status(404).send('Introuvable');
+  const b = rows[0];
+
+  const html = `
+    <!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>body{font-family:sans-serif;text-align:center;padding:40px 20px;background:#f9fafb}
+    .btn{display:inline-block;padding:15px 30px;margin:10px;border-radius:10px;text-decoration:none;font-size:24px;border:none;cursor:pointer}
+    .g{background:#e8f5e9;color:#2e7d32} .b{background:#ffebee;color:#c62828}</style></head>
+    <body>
+      <h2>Êtes-vous satisfait de votre expérience chez ${b.name} ?</h2>
+      <button class="btn g" onclick="window.location.href='${b.google_review_url || '#'}'">👍 Oui, très !</button>
+      <button class="btn b" onclick="document.getElementById('bad').style.display='block'">👎 Non, pas vraiment</button>
+      <div id="bad" style="display:none;margin-top:30px">
+        <p>Désolé de l'apprendre. Que pouvons-nous améliorer ?</p>
+        <form method="POST" action="/api/customers/public/feedback/${req.params.passId}">
+          <textarea name="comment" rows="4" style="width:100%;max-width:400px;border-radius:8px;padding:10px"></textarea><br>
+          <button type="submit" style="margin-top:10px;padding:10px 20px;background:#333;color:#fff;border:none;border-radius:6px">Envoyer au gérant</button>
+        </form>
+      </div>
+    </body></html>
+  `;
+  res.send(html);
+});
+
+router.post('/public/feedback/:passId', async (req, res) => {
+  const { comment } = req.body;
+  // TODO: Insert into a feedback table or send an email. For now we just log it as an alert.
+  const { rows } = await db.query('SELECT tenant_id FROM customer_passes WHERE id = $1', [req.params.passId]);
+  if (rows[0] && comment) {
+    await db.query(`INSERT INTO alerts (tenant_id, pass_id, type, description) VALUES ($1,$2,'negative_feedback',$3)`, 
+      [rows[0].tenant_id, req.params.passId, comment.substring(0, 500)]);
+  }
+  res.send('<html><body style="font-family:sans-serif;text-align:center;padding:50px"><h2>Merci pour votre retour.</h2><p>Le gérant a été notifié.</p></body></html>');
+});
+
 // ---------- PUBLIC : infos programme pour la landing ----------
 router.get('/public/program/:programId', async (req, res) => {
   const { rows } = await db.query(
@@ -43,31 +103,13 @@ router.post('/public/signup/:programId', async (req, res) => {
      source || 'qr', source_ref || null, !!marketing_consent, consentEntry]);
 
   const customer = rows[0];
-  const pass = await loyalty.createPass(tid, customer.id, req.params.programId);
+  const pass = await loyalty.createPass(tid, customer.id, req.params.programId, source && source !== 'qr' && source !== 'kiosk' ? source : null);
   
   if (customer.is_new) {
     if (automations.welcome?.bonus) {
       const tType = pType === 'stamps' ? 'add_stamp' : 'add_points';
       const amount = pType === 'points' ? pPts : 0;
       try { await loyalty.applyTransaction({ passId: pass.id, type: tType, amount, source: 'welcome_bonus', comment: 'Cadeau de bienvenue' }); } catch(e) { console.error('Bonus error', e); }
-    }
-
-    // Parrainage (MVP)
-    if (source && source !== 'qr' && source !== 'kiosk' && source !== pass.serial_number) {
-      try {
-        const friendPass = await db.query('SELECT id, customer_id FROM customer_passes WHERE serial_number = $1 AND tenant_id = $2', [source, tid]);
-        if (friendPass.rows[0]) {
-          const monthly = await db.query(
-            `SELECT count(*) FROM transactions WHERE pass_id = $1 AND source = 'referral' AND created_at > date_trunc('month', now())`, 
-            [friendPass.rows[0].id]
-          );
-          if (parseInt(monthly.rows[0].count) < 10) {
-            const tType = pType === 'stamps' ? 'add_stamp' : 'add_points';
-            const amount = pType === 'points' ? pPts : 0;
-            await loyalty.applyTransaction({ passId: friendPass.rows[0].id, type: tType, amount, source: 'referral', comment: 'Parrainage' });
-          }
-        }
-      } catch (e) { console.error('Referral error', e); }
     }
   }
 

@@ -11,7 +11,7 @@ const AMOUNT_REQUIRED_TYPES = ['purchase', 'add_points', 'remove_points'];
 // GET /api/scan/:serial — le scanner lit un QR et affiche le profil fidélité
 router.get('/scan/:serial', required, roles(...CAN_SCAN), async (req, res) => {
   const { rows } = await db.query(
-    `SELECT p.id AS pass_id, p.serial_number, p.stamps, p.points, p.rewards_available, p.wallet_status,
+    `SELECT p.id AS pass_id, p.serial_number, p.stamps, p.points, p.rewards_available, p.wallet_status, p.tags, p.current_streak,
             c.id AS customer_id, c.first_name, c.last_name, c.email,
             pr.name AS program_name, pr.type, pr.stamps_required, pr.reward_label,
             pr.points_per_unit, pr.points_for_reward
@@ -183,11 +183,19 @@ router.get('/transactions', required, async (req, res) => {
 // GET /api/notifications — historique des envois
 router.get('/notifications', required, async (req, res) => {
   const { rows } = await db.query(
-    `SELECT n.id, n.type, n.message, n.status, n.created_at, c.first_name, c.last_name, p.wallet_status
-     FROM notifications n
-     JOIN customers c ON c.id = n.customer_id
-     JOIN customer_passes p ON p.id = n.pass_id
-     WHERE n.tenant_id = $1 ORDER BY n.created_at DESC LIMIT 200`, [req.auth.tid]);
+    `SELECT n.*, c.first_name, c.last_name 
+     FROM notifications n JOIN customers c ON c.id = n.customer_id
+     WHERE n.tenant_id = $1 ORDER BY n.created_at DESC LIMIT 50`, [req.auth.tid]);
+  res.json(rows);
+});
+
+router.get('/alerts', required, async (req, res) => {
+  const { rows } = await db.query(
+    `SELECT a.*, p.serial_number, c.first_name, c.last_name
+     FROM alerts a 
+     JOIN customer_passes p ON p.id = a.pass_id
+     JOIN customers c ON c.id = p.customer_id
+     WHERE a.tenant_id = $1 ORDER BY a.created_at DESC LIMIT 50`, [req.auth.tid]);
   res.json(rows);
 });
 

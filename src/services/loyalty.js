@@ -37,15 +37,15 @@ async function loadPassContext(passId) {
   };
 }
 
-async function createPass(tenantId, customerId, programId) {
+async function createPass(tenantId, customerId, programId, source = null) {
   const serial = crypto.randomUUID();
   const authToken = crypto.randomBytes(24).toString('hex');
   const { rows } = await db.query(
-    `INSERT INTO customer_passes (tenant_id, customer_id, program_id, serial_number, auth_token)
-     VALUES ($1,$2,$3,$4,$5)
+    `INSERT INTO customer_passes (tenant_id, customer_id, program_id, serial_number, auth_token, source)
+     VALUES ($1,$2,$3,$4,$5,$6)
      ON CONFLICT (customer_id, program_id) DO UPDATE SET last_updated = now()
      RETURNING *`,
-    [tenantId, customerId, programId, serial, authToken]);
+    [tenantId, customerId, programId, serial, authToken, source]);
   return rows[0];
 }
 
@@ -110,43 +110,61 @@ async function applyTransaction({ passId, type, amount, userId, locationId, comm
         [passId]
       );
       if (recent.rows[0].n >= fraudLimit) {
+        // Log alert
+        await client.query(`INSERT INTO alerts (tenant_id, pass_id, type, description) VALUES ($1,$2,$3,$4)`,
+          [ctx.tenantId, passId, 'fraud_limit_exceeded', `Limite horaire dépassée (${recent.rows[0].n} scans)`]);
         await client.query('ROLLBACK');
-        throw new Error(`Sécurité : Limite de ${fraudLimit} actions par heure sur la même carte.`);
+        throw new Error(`Sécurité : Activité anormale détectée, action bloquée et gérant notifié.`);
       }
     }
 
+    // ── Gamification, Happy Hour & Multipliers ──
+    let multiplier = 1;
+    let hh = program.automations?.happy_hour;
+    if (hh && hh.active) {
+      const currentHour = new Date().getHours();
+      if (currentHour >= hh.start && currentHour < hh.end) {
+        multiplier = hh.multiplier || 2;
+      }
+    }
+
+    // VIP Multiplier (based on tags)
+    if (pass.tags && pass.tags.includes('VIP Or')) multiplier = Math.max(multiplier, 2);
+    else if (pass.tags && pass.tags.includes('VIP Argent')) multiplier = Math.max(multiplier, 1.5);
+
     // ── Business logic ──
     let stampsDelta = 0, pointsDelta = 0, rewardsDelta = 0;
+    let streakDelta = 0;
     let message = '';
 
     switch (type) {
       case 'purchase': {
         if (program.type === 'stamps') {
-          stampsDelta = 1;
-          const newStamps = pass.stamps + 1;
+          stampsDelta = 1 * multiplier;
+          const newStamps = pass.stamps + stampsDelta;
           if (newStamps >= program.stamps_required) {
-            rewardsDelta = 1;
-            stampsDelta = -pass.stamps; // reset compteur
-            message = `🎉 Récompense débloquée : ${program.reward_label || 'récompense'} !`;
+            rewardsDelta = Math.floor(newStamps / program.stamps_required);
+            stampsDelta = (newStamps % program.stamps_required) - pass.stamps; // keep remainder
+            message = `🎉 ${rewardsDelta > 1 ? rewardsDelta + ' récompenses débloquées' : 'Récompense débloquée'} !`;
           } else {
             const left = program.stamps_required - newStamps;
             message = `Merci ! Plus que ${left} tampon${left > 1 ? 's' : ''} avant votre récompense.`;
           }
         } else {
-          const pts = Math.round(Number(amount || 0) * Number(program.points_per_unit || 1) * 100) / 100;
+          const pts = Math.round(Number(amount || 0) * Number(program.points_per_unit || 1) * multiplier * 100) / 100;
           pointsDelta = pts;
-          message = `Vous avez gagné ${pts} points. Merci pour votre achat !`;
+          message = `Vous avez gagné ${pts} points. Merci !`;
         }
         break;
       }
-      case 'add_stamp': stampsDelta = 1; message = 'Un tampon ajouté sur votre carte.'; break;
+      case 'add_stamp': stampsDelta = 1 * multiplier; message = `${stampsDelta} tampon(s) ajouté(s).`; break;
       case 'remove_stamp': {
         if (pass.stamps <= 0) throw new Error('Aucun tampon à retirer');
         stampsDelta = -1;
         message = 'Correction : un tampon retiré.';
         break;
       }
-      case 'add_points': pointsDelta = Number(amount || 0); message = `${pointsDelta} points ajoutés.`; break;
+      case 'add_points': pointsDelta = Number(amount || 0) * multiplier; message = `${pointsDelta} points ajoutés.`; break;
       case 'remove_points': {
         const toRemove = Number(amount || 0);
         if (toRemove > Number(pass.points)) throw new Error('Points insuffisants pour le débit');
@@ -169,6 +187,29 @@ async function applyTransaction({ passId, type, amount, userId, locationId, comm
       default: throw new Error(`Type de transaction inconnu : ${type}`);
     }
 
+    // ── Gamification: Streak calculation ──
+    let isStreakBonus = false;
+    if (['purchase', 'add_stamp', 'add_points'].includes(type)) {
+      const now = new Date();
+      if (!pass.last_visit) {
+        streakDelta = 1 - pass.current_streak; // set to 1
+      } else {
+        const daysDiff = (now - new Date(pass.last_visit)) / (1000 * 60 * 60 * 24);
+        if (daysDiff > 0.5 && daysDiff <= 7) {
+          streakDelta = 1; // +1 if returning within a week
+        } else if (daysDiff > 7) {
+          streakDelta = 1 - pass.current_streak; // reset to 1
+        }
+      }
+      if ((pass.current_streak + streakDelta) % 3 === 0 && (pass.current_streak + streakDelta) > 0) {
+        // Streak bonus every 3 weeks!
+        isStreakBonus = true;
+        if (program.type === 'stamps') stampsDelta += 1;
+        else pointsDelta += 100;
+        message = `🔥 Gamification: Bonus Streak (x${(pass.current_streak + streakDelta)/3}) ! ` + message;
+      }
+    }
+
     // ── Validate no negative balances ──
     const newStamps = pass.stamps + stampsDelta;
     const newPoints = Number(pass.points) + pointsDelta;
@@ -186,16 +227,49 @@ async function applyTransaction({ passId, type, amount, userId, locationId, comm
        type, amount || null, pointsDelta, stampsDelta, comment || null, source, client_tx_id || null]);
     const txId = txRes.rows[0].id;
     ctx.txId = txId;
+
+    // ── Calculate VIP Tiers based on 90 days spend ──
+    // Just a basic heuristic: if points sum > threshold, upgrade tag
+    let tags = pass.tags || [];
+    if (['purchase', 'add_points', 'add_stamp'].includes(type)) {
+       const spendRes = await client.query(`SELECT sum(amount)::numeric as tot FROM transactions WHERE pass_id = $1 AND created_at > now() - interval '90 days'`, [passId]);
+       const spend = Number(spendRes.rows[0].tot || 0) + Number(amount || 0);
+       tags = tags.filter(t => !t.startsWith('VIP'));
+       if (spend >= 500) tags.push('VIP Or');
+       else if (spend >= 200) tags.push('VIP Argent');
+       else if (spend >= 100) tags.push('VIP Bronze');
+    }
+
     const { rows } = await client.query(
       `UPDATE customer_passes
        SET stamps = $2,
            points = $3,
            rewards_available = $4,
-           last_updated = now()
+           last_updated = now(),
+           current_streak = current_streak + $5,
+           last_visit = CASE WHEN $6::boolean THEN now() ELSE last_visit END,
+           tags = $7
        WHERE id = $1 RETURNING *`,
-      [passId, newStamps, newPoints, newRewards]);
+      [passId, newStamps, newPoints, newRewards, streakDelta, ['purchase','add_stamp','add_points'].includes(type), tags]);
     await client.query('COMMIT');
     ctx.pass = { ...ctx.pass, ...rows[0] };
+
+    // ── Referral V2 Bonus ──
+    // Si c'est le 1er achat du filleul, on crédite le parrain !
+    if (['purchase', 'add_stamp', 'add_points'].includes(type)) {
+       const txCountRes = await db.query(`SELECT count(*)::int as n FROM transactions WHERE pass_id = $1 AND type IN ('purchase','add_stamp','add_points')`, [passId]);
+       if (txCountRes.rows[0].n === 1 && pass.source) {
+          // It's the first real purchase. Find the referrer
+          const ref = await db.query(`SELECT id FROM customer_passes WHERE serial_number = $1 AND tenant_id = $2`, [pass.source, ctx.tenantId]);
+          if (ref.rows[0]) {
+             // Add a referral bonus directly via internal call
+             const pType = program.type;
+             const tType = pType === 'stamps' ? 'add_stamp' : 'add_points';
+             const amt = pType === 'points' ? (program.points_per_unit || 1) : 0;
+             await applyTransaction({ passId: ref.rows[0].id, type: tType, amount: amt, source: 'referral', comment: 'Bonus parrainage (1er achat du filleul)' });
+          }
+       }
+    }
 
     // Notification + rafraîchissement des wallets (best-effort, non bloquant, OUTSIDE the transaction)
     notifyAndRefresh(ctx, message, 'transactional').catch((e) => console.error('[wallet-update]', e.message));
