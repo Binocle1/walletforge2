@@ -1,5 +1,5 @@
 // Service worker minimal : cache le shell pour un démarrage instantané en boutique
-const CACHE = 'wf-scanner-v6'; // Bump version
+const CACHE = 'wf-scanner-v7'; // Bump version
 const SHELL = ['/scanner/', '/scanner/index.html', '/scanner/manifest.json'];
 self.addEventListener('install', (e) => {
   self.skipWaiting();
@@ -11,7 +11,7 @@ self.addEventListener('activate', (e) => {
   ).then(() => clients.claim()));
 });
 self.addEventListener('fetch', (e) => {
-  if (e.request.method !== 'GET' || e.request.url.includes('/api/')) return;
+  if (e.request.method !== 'GET' || e.request.url.includes('/api/') || e.request.url.startsWith('blob:')) return;
   // Network first for HTML, cache fallback. Cache first for everything else.
   const accept = e.request.headers.get('accept') || '';
   if (accept.includes('text/html')) {
