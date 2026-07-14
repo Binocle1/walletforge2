@@ -1,5 +1,5 @@
 // Service worker minimal : cache le shell pour un démarrage instantané en boutique
-const CACHE = 'wf-scanner-v3';
+const CACHE = 'wf-scanner-v4';
 const SHELL = ['/scanner/', '/scanner/index.html', '/scanner/manifest.json'];
 self.addEventListener('install', (e) => {
   self.skipWaiting();

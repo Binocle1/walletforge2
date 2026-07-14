@@ -284,7 +284,8 @@ function npOk() {
 let returnTimer = null;
 async function tx(type, amount) {
   try {
-    const r = await api('/transactions', { method: 'POST', body: { pass_id: current.pass_id, type, amount } });
+    const client_tx_id = crypto.randomUUID ? crypto.randomUUID() : ('ctx_' + Date.now() + '_' + Math.random().toString(36).slice(2));
+    const r = await api('/transactions', { method: 'POST', body: { pass_id: current.pass_id, type, amount, client_tx_id } });
     toast(r.message, false, r.tx_id);
     current.stamps = r.pass.stamps; current.points = r.pass.points; current.rewards_available = r.pass.rewards_available;
     renderProfile();

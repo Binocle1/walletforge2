@@ -5,6 +5,9 @@ const loyalty = require('../services/loyalty');
 
 const CAN_SCAN = ['owner', 'admin', 'manager', 'cashier'];
 
+const VALID_TYPES = ['purchase', 'add_stamp', 'remove_stamp', 'add_points', 'remove_points', 'reward_redeemed', 'adjustment'];
+const AMOUNT_REQUIRED_TYPES = ['purchase', 'add_points', 'remove_points'];
+
 // GET /api/scan/:serial — le scanner lit un QR et affiche le profil fidélité
 router.get('/scan/:serial', required, roles(...CAN_SCAN), async (req, res) => {
   const { rows } = await db.query(
@@ -39,21 +42,35 @@ router.get('/scan-search', required, roles(...CAN_SCAN), async (req, res) => {
 
 // POST /api/transactions — appliquer une action (achat, tampon, points, récompense…)
 router.post('/transactions', required, roles(...CAN_SCAN), async (req, res) => {
-  const { pass_id, type, amount, comment, location_id } = req.body;
+  const { pass_id, type, amount, comment, location_id, client_tx_id } = req.body;
+
+  // ── Input validation ──
+  if (!VALID_TYPES.includes(type)) {
+    return res.status(400).json({ error: `Type de transaction invalide : ${type}` });
+  }
+  if (AMOUNT_REQUIRED_TYPES.includes(type)) {
+    const numAmount = Number(amount);
+    if (!Number.isFinite(numAmount) || numAmount <= 0) {
+      return res.status(400).json({ error: 'Le montant doit être un nombre positif' });
+    }
+  }
+
   // Vérif isolation tenant
   const p = await db.query('SELECT id FROM customer_passes WHERE id = $1 AND tenant_id = $2', [pass_id, req.auth.tid]);
   if (!p.rows[0]) return res.status(404).json({ error: 'Carte introuvable' });
 
-  // Anti-fraude caissier : 2 transactions max par heure par carte
-  if (['purchase', 'add_stamp', 'add_points'].includes(type)) {
-    const recent = await db.query(
-      `SELECT count(*) FROM transactions WHERE pass_id = $1 AND type IN ('purchase','add_stamp','add_points') AND created_at > now() - interval '1 hour'`,
-      [pass_id]
+  // ── Offline idempotency: check client_tx_id ──
+  if (client_tx_id) {
+    const existing = await db.query(
+      'SELECT id FROM transactions WHERE client_tx_id = $1 AND tenant_id = $2',
+      [client_tx_id, req.auth.tid]
     );
-    if (parseInt(recent.rows[0].count) >= 2) {
-      return res.status(429).json({ error: 'Sécurité : Limite de 2 actions par heure sur la même carte.' });
+    if (existing.rows[0]) {
+      return res.json({ ok: true, message: 'Déjà traité', tx_id: existing.rows[0].id, duplicate: true });
     }
   }
+
+  // Anti-fraud is now checked INSIDE applyTransaction (within the FOR UPDATE lock)
 
   try {
     const result = await loyalty.applyTransaction({
@@ -61,6 +78,7 @@ router.post('/transactions', required, roles(...CAN_SCAN), async (req, res) => {
       userId: req.auth.uid,
       locationId: location_id || req.auth.loc || null,
       source: req.body.source || 'scanner',
+      client_tx_id: client_tx_id || null,
     });
     res.json({
       ok: true,
@@ -72,11 +90,15 @@ router.post('/transactions', required, roles(...CAN_SCAN), async (req, res) => {
       },
     });
   } catch (e) {
+    // Anti-fraud errors from loyalty.js come as regular errors with a message starting with "Sécurité"
+    if (e.message.startsWith('Sécurité')) {
+      return res.status(429).json({ error: e.message });
+    }
     res.status(400).json({ error: e.message });
   }
 });
 
-// DELETE /api/transactions/:id — Annuler une transaction (Undo 10s)
+// DELETE /api/transactions/:id — Annuler une transaction (contrepassation au lieu de DELETE)
 router.delete('/transactions/:id', required, roles(...CAN_SCAN), async (req, res) => {
   const tx = await db.query('SELECT * FROM transactions WHERE id = $1 AND tenant_id = $2', [req.params.id, req.auth.tid]);
   if (!tx.rows[0]) return res.status(404).json({ error: 'Introuvable' });
@@ -86,24 +108,58 @@ router.delete('/transactions/:id', required, roles(...CAN_SCAN), async (req, res
   if (Date.now() - new Date(t.created_at).getTime() > 5 * 60000) {
     return res.status(400).json({ error: 'Délai d\'annulation dépassé' });
   }
+
+  // Don't allow cancelling a cancel transaction
+  if (t.type === 'cancel') {
+    return res.status(400).json({ error: 'Impossible d\'annuler une annulation' });
+  }
+
+  // Check if already cancelled
+  const alreadyCancelled = await db.query(
+    "SELECT id FROM transactions WHERE comment = $1 AND type = 'cancel'",
+    [`Annulation de ${t.id}`]
+  );
+  if (alreadyCancelled.rows[0]) {
+    return res.status(400).json({ error: 'Transaction déjà annulée' });
+  }
   
   let rewardsDelta = 0;
   if (t.type === 'reward_redeemed') rewardsDelta = 1;
   // Si c'était un achat qui a déclenché une récompense, on retire la récompense
   if (t.type === 'purchase' && t.stamps_delta < 0) rewardsDelta = -1;
 
+  const invertedStampsDelta = -t.stamps_delta;
+  const invertedPointsDelta = -Number(t.points_delta);
+
   const client = await db.pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('DELETE FROM transactions WHERE id = $1', [t.id]);
+    // INSERT contrepassation instead of DELETE
+    const cancelRes = await client.query(
+      `INSERT INTO transactions (tenant_id, pass_id, customer_id, program_id, location_id, user_id,
+                                 type, amount, points_delta, stamps_delta, comment, source)
+       VALUES ($1,$2,$3,$4,$5,$6,'cancel',$7,$8,$9,$10,'scanner') RETURNING id`,
+      [t.tenant_id, t.pass_id, t.customer_id, t.program_id, t.location_id, t.user_id,
+       null, invertedPointsDelta, invertedStampsDelta, `Annulation de ${t.id}`]);
     await client.query(
       `UPDATE customer_passes 
-       SET stamps = greatest(0, stamps - $2), 
-           points = greatest(0, points - $3),
-           rewards_available = greatest(0, rewards_available + $4)
-       WHERE id = $1`, [t.pass_id, t.stamps_delta, t.points_delta, rewardsDelta]);
+       SET stamps = greatest(0, stamps + $2), 
+           points = greatest(0, points + $3),
+           rewards_available = greatest(0, rewards_available + $4),
+           last_updated = now()
+       WHERE id = $1`, [t.pass_id, invertedStampsDelta, invertedPointsDelta, rewardsDelta]);
     await client.query('COMMIT');
-    res.json({ success: true });
+
+    // Notify and refresh wallet after contrepassation
+    try {
+      const ctx = await loyalty.loadPassContext(t.pass_id);
+      if (ctx) {
+        ctx.txId = cancelRes.rows[0].id;
+        await loyalty.notifyAndRefresh(ctx, 'Transaction annulée. Votre carte a été mise à jour.', 'transactional');
+      }
+    } catch (e) { console.error('[cancel-notify]', e.message); }
+
+    res.json({ success: true, cancel_tx_id: cancelRes.rows[0].id });
   } catch(e) {
     await client.query('ROLLBACK');
     res.status(500).json({ error: e.message });

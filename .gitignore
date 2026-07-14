@@ -84,3 +84,9 @@ Thumbs.db
 # Certificats et clés privées (très important pour WalletForge)
 certs/*
 !certs/.gitkeep
+
+# Fichiers temporaires / debug
+test.js
+check_constraints.js
+fix_constraints.js
+*.zip

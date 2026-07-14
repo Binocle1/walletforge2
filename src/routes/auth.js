@@ -2,6 +2,7 @@ const router = require('express').Router();
 const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { sign, required, roles, bruteForceGuard } = require('../auth');
+const { checkPlanLimit } = require('../services/planLimits');
 
 // POST /api/auth/register — crée tenant + business + owner
 router.post('/register', async (req, res) => {
@@ -75,6 +76,13 @@ router.post('/invite', required, roles('owner', 'admin'), async (req, res) => {
   if (!email && !username) {
     return res.status(400).json({ error: 'Email ou nom d\'utilisateur requis' });
   }
+  // Check plan limit for users (managers resource)
+  try {
+    await checkPlanLimit(req.auth.tid, 'managers', 'users');
+  } catch (e) {
+    return res.status(403).json({ error: e.message });
+  }
+
   const hash = await bcrypt.hash(password || Math.random().toString(36), 12);
   const finalEmail = email ? email.toLowerCase() : `sub_${Date.now()}_${username}@walletforge.local`;
   const finalUsername = username ? username.toLowerCase() : null;
@@ -107,22 +115,7 @@ router.get('/users', required, roles('owner', 'admin'), async (req, res) => {
   res.json(rows);
 });
 
-// POST /api/auth/invite — Ajouter un vendeur/membre
-router.post('/invite', required, roles('owner', 'admin'), async (req, res) => {
-  const { full_name, username, password, role } = req.body;
-  if (!username || !password || !role) return res.status(400).json({ error: 'Username, password et role requis' });
-  const hash = await bcrypt.hash(password, 10);
-  try {
-    const { rows } = await db.query(
-      `INSERT INTO users (tenant_id, full_name, username, password_hash, role)
-       VALUES ($1, $2, $3, $4, $5) RETURNING id, username, full_name, role`,
-      [req.auth.tid, full_name || null, username, hash, role]);
-    res.json(rows[0]);
-  } catch (e) {
-    if (e.code === '23505') return res.status(400).json({ error: 'Cet identifiant est déjà utilisé' });
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
+
 
 // DELETE /api/auth/users/:id — Supprimer un membre
 router.delete('/users/:id', required, roles('owner', 'admin'), async (req, res) => {
@@ -184,7 +177,9 @@ router.post('/forgot-password', bruteForceGuard, async (req, res) => {
       });
     } catch(e) { console.error('SMTP Error:', e); }
   } else {
-    console.log('\n[CRITICAL] DEBUG MODE - Lien de reset pour', rows[0].email, ':\n\n', resetLink, '\n\n');
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('\n[DEBUG] Reset link for', rows[0].email, ':', resetLink, '\n');
+    }
   }
 
   res.json({ ok: true, message: 'Si ce compte existe, un lien a été envoyé.' });

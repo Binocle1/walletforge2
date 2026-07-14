@@ -1,6 +1,10 @@
 const jwt = require('jsonwebtoken');
 
 const SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
+if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET must be set in production');
+  process.exit(1);
+}
 
 function sign(user) {
   return jwt.sign(
@@ -13,7 +17,7 @@ function sign(user) {
 // Middleware : requiert un JWT valide. req.auth = {uid, tid, role, loc}
 function required(req, res, next) {
   const h = req.headers.authorization || '';
-  const token = h.startsWith('Bearer ') ? h.slice(7) : req.query.token;
+  const token = h.startsWith('Bearer ') ? h.slice(7) : null;
   if (!token) return res.status(401).json({ error: 'Authentification requise' });
   try {
     req.auth = jwt.verify(token, SECRET);

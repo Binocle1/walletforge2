@@ -3,6 +3,8 @@ const QRCode = require('qrcode');
 const db = require('../db');
 const { required, roles } = require('../auth');
 
+function escHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
 // GET /api/programs
 router.get('/', required, async (req, res) => {
   const { rows } = await db.query(
@@ -17,6 +19,15 @@ router.post('/', required, roles('owner', 'admin'), async (req, res) => {
   if (!name || !['stamps', 'points'].includes(type)) {
     return res.status(400).json({ error: 'Nom et type (stamps ou points) requis' });
   }
+  
+  // Check plan limits
+  const { checkPlanLimit } = require('../services/planLimits');
+  try {
+    await checkPlanLimit(req.auth.tid, 'programs', 'loyalty_programs');
+  } catch (e) {
+    return res.status(403).json({ error: e.message });
+  }
+
   const b = await db.query('SELECT id FROM businesses WHERE tenant_id = $1 LIMIT 1', [req.auth.tid]);
   const { rows } = await db.query(
     `INSERT INTO loyalty_programs (tenant_id, business_id, name, type, stamps_required, reward_label,
@@ -57,7 +68,7 @@ router.get('/:id/chevalet', required, async (req, res) => {
   res.send(`<!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8"><title>Chevalet - ${p.b_name}</title>
+<meta charset="UTF-8"><title>Chevalet - ${escHtml(p.b_name)}</title>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
 <style>
   @page { size: A6 portrait; margin: 0; }
@@ -75,8 +86,8 @@ router.get('/:id/chevalet', required, async (req, res) => {
 <body onload="window.print()">
   <div class="chevalet">
     <div class="bg"></div>
-    ${p.logo_url ? `<img src="${p.logo_url}" class="logo">` : ''}
-    <h1>${p.p_name}</h1>
+    ${p.logo_url ? `<img src="${escHtml(p.logo_url)}" class="logo">` : ''}
+    <h1>${escHtml(p.p_name)}</h1>
     <div class="card">
       <img src="${qrBase64}" class="qr">
       <p>Scannez pour rejoindre<br>notre programme !</p>

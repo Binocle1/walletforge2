@@ -147,7 +147,7 @@ td{padding:10px;border-bottom:1px solid var(--line)}
       <div class="row" style="justify-content:space-between;margin-bottom:18px">
         <h1>Clients</h1>
         <div class="row">
-          <button class="btn ghost" style="margin-right:8px" onclick="window.open(API + '/customers/export/marketing?token=' + TOKEN, '_blank')">Export Marketing (CSV)</button>
+          <button class="btn ghost" style="margin-right:8px" onclick="(async()=>{try{const r=await fetch(API+'/customers/export/marketing',{headers:{Authorization:'Bearer '+TOKEN}});if(!r.ok)throw new Error('Erreur '+r.status);const b=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='export-marketing.csv';a.click();URL.revokeObjectURL(a.href);}catch(e){toast(e.message,1);}})()">Export Marketing (CSV)</button>
           <button class="btn amber" onclick="openModal('mNotifyAll')">Notifier tous les clients</button>
           <input id="custSearch" placeholder="Rechercher…" style="max-width:260px;margin-left:8px" oninput="loadCustomers()">
         </div>
@@ -550,7 +550,16 @@ async function showQr(id, name) {
   const a = document.getElementById('qrLink'); a.href = link; a.textContent = link;
   
   document.getElementById('btnKiosk').onclick = () => window.open(link + '?mode=kiosk', '_blank');
-  document.getElementById('btnPdf').onclick = () => window.open(API + '/programs/' + id + '/chevalet?token=' + TOKEN, '_blank');
+  document.getElementById('btnPdf').onclick = async () => {
+    try {
+      const r = await fetch(API + '/programs/' + id + '/chevalet', { headers: { Authorization: 'Bearer ' + TOKEN } });
+      if (!r.ok) throw new Error('Erreur ' + r.status);
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'chevalet.html'; a.click();
+      URL.revokeObjectURL(url);
+    } catch(e) { toast(e.message, 1); }
+  };
 
   openModal('mQr');
 }

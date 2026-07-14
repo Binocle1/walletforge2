@@ -38,38 +38,46 @@ router.post('/public/signup/:programId', async (req, res) => {
        SET first_name = EXCLUDED.first_name,
            marketing_consent = EXCLUDED.marketing_consent,
            consent_history = customers.consent_history || EXCLUDED.consent_history
-     RETURNING *`,
+     RETURNING *, (xmax = 0) AS is_new`,
     [tid, first_name, last_name || null, email, phone || null, birthday || null,
      source || 'qr', source_ref || null, !!marketing_consent, consentEntry]);
 
-  const pass = await loyalty.createPass(tid, rows[0].id, req.params.programId);
+  const customer = rows[0];
+  const pass = await loyalty.createPass(tid, customer.id, req.params.programId);
   
-  if (automations.welcome?.bonus) {
-    const tType = pType === 'stamps' ? 'add_stamp' : 'add_points';
-    const amount = pType === 'points' ? pPts : 0;
-    try { await loyalty.applyTransaction({ passId: pass.id, type: tType, amount, source: 'welcome_bonus', comment: 'Cadeau de bienvenue' }); } catch(e) { console.error('Bonus error', e); }
-  }
+  if (customer.is_new) {
+    if (automations.welcome?.bonus) {
+      const tType = pType === 'stamps' ? 'add_stamp' : 'add_points';
+      const amount = pType === 'points' ? pPts : 0;
+      try { await loyalty.applyTransaction({ passId: pass.id, type: tType, amount, source: 'welcome_bonus', comment: 'Cadeau de bienvenue' }); } catch(e) { console.error('Bonus error', e); }
+    }
 
-  // Parrainage (MVP)
-  if (source && source !== 'qr' && source !== 'kiosk') {
-    try {
-      const friendPass = await db.query('SELECT id, customer_id FROM customer_passes WHERE serial_number = $1 AND tenant_id = $2', [source, tid]);
-      if (friendPass.rows[0]) {
-        const tType = pType === 'stamps' ? 'add_stamp' : 'add_points';
-        const amount = pType === 'points' ? pPts : 0;
-        await loyalty.applyTransaction({ passId: friendPass.rows[0].id, type: tType, amount, source: 'referral', comment: 'Parrainage' });
-      }
-    } catch (e) { console.error('Referral error', e); }
+    // Parrainage (MVP)
+    if (source && source !== 'qr' && source !== 'kiosk' && source !== pass.serial_number) {
+      try {
+        const friendPass = await db.query('SELECT id, customer_id FROM customer_passes WHERE serial_number = $1 AND tenant_id = $2', [source, tid]);
+        if (friendPass.rows[0]) {
+          const monthly = await db.query(
+            `SELECT count(*) FROM transactions WHERE pass_id = $1 AND source = 'referral' AND created_at > date_trunc('month', now())`, 
+            [friendPass.rows[0].id]
+          );
+          if (parseInt(monthly.rows[0].count) < 10) {
+            const tType = pType === 'stamps' ? 'add_stamp' : 'add_points';
+            const amount = pType === 'points' ? pPts : 0;
+            await loyalty.applyTransaction({ passId: friendPass.rows[0].id, type: tType, amount, source: 'referral', comment: 'Parrainage' });
+          }
+        }
+      } catch (e) { console.error('Referral error', e); }
+    }
   }
 
   if (automations.welcome?.active && automations.welcome?.msg) {
     const msg = automations.welcome.msg;
     await db.query('UPDATE customer_passes SET announcement = $1 WHERE id = $2', [msg, pass.id]);
-    await db.query(`INSERT INTO notifications (tenant_id, customer_id, pass_id, type, message, status) VALUES ($1,$2,$3,'automation',$4,'simulated')`, [tid, rows[0].id, pass.id, msg]);
-    // Optionally we could notifyAndRefresh here but it's new pass so the first fetch will have it.
+    await db.query(`INSERT INTO notifications (tenant_id, customer_id, pass_id, type, message, status) VALUES ($1,$2,$3,'automation',$4,'simulated')`, [tid, customer.id, pass.id, msg]);
   }
   
-  res.json({ customer_id: rows[0].id, pass_id: pass.id, serial: pass.serial_number });
+  res.json({ customer_id: customer.id, pass_id: pass.id, serial: pass.serial_number });
 });
 
 // ---------- CRM (dashboard) ----------

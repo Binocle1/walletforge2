@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
+const helmet = require('helmet');
 
 const authRoutes = require('./routes/auth');
 const programRoutes = require('./routes/programs');
@@ -11,18 +12,37 @@ const uploadRoutes = require('./routes/upload');
 const billing = require('./routes/billing');
 const apple = require('./services/appleWallet');
 const google = require('./services/googleWallet');
+const { required } = require('./auth');
 require('./cron'); // Lance le worker des tâches en arrière-plan
 
 const app = express();
 app.set('trust proxy', 1);
 
-// ---------- Sécurité de base ----------
+// ---------- Sécurité ----------
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://unpkg.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "blob:", "https:"],
+      connectSrc: ["'self'"],
+    },
+  },
+  crossOriginEmbedderPolicy: false, // needed for external fonts/images
+}));
+
 app.use((req, res, next) => {
-  res.set({
-    'X-Content-Type-Options': 'nosniff',
-    'X-Frame-Options': 'DENY',
-    'Referrer-Policy': 'strict-origin-when-cross-origin',
-  });
+  // CORS explicite
+  const origin = req.headers.origin;
+  if (origin) {
+    res.set('Access-Control-Allow-Origin', origin);
+    res.set('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+    res.set('Access-Control-Allow-Credentials', 'true');
+    if (req.method === 'OPTIONS') return res.status(204).end();
+  }
   // HTTPS forcé derrière un proxy (Render/Railway/nginx)
   if (process.env.NODE_ENV === 'production' && req.headers['x-forwarded-proto'] === 'http') {
     return res.redirect(301, `https://${req.headers.host}${req.url}`);
@@ -57,7 +77,7 @@ app.use('/api/billing', billing.router);
 app.use('/api/admin', require('./routes/admin'));
 
 // Statut de configuration (le dashboard l'affiche)
-app.get('/api/status', (req, res) => {
+app.get('/api/status', required, (req, res) => {
   res.json({
     apple_wallet: apple.isConfigured(),
     apns: apple.apnsConfigured(),

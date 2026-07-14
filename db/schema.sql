@@ -55,7 +55,7 @@ CREATE TABLE locations (
 CREATE TABLE users (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id     UUID REFERENCES tenants(id) ON DELETE CASCADE,  -- NULL = super admin plateforme
-  email         TEXT UNIQUE,
+  email         TEXT,
   username      TEXT,
   password_hash TEXT NOT NULL,
   full_name     TEXT NOT NULL,
@@ -67,6 +67,7 @@ CREATE TABLE users (
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (tenant_id, username)
 );
+CREATE UNIQUE INDEX idx_users_tenant_email ON users (tenant_id, email);
 
 -- ---------- Programmes de fidélité ----------
 CREATE TABLE loyalty_programs (
@@ -115,9 +116,9 @@ CREATE TABLE customer_passes (
   program_id    UUID NOT NULL REFERENCES loyalty_programs(id) ON DELETE CASCADE,
   serial_number TEXT NOT NULL UNIQUE,            -- identifiant unique de la carte (QR)
   auth_token    TEXT NOT NULL,                   -- token web service Apple Wallet
-  stamps        INT NOT NULL DEFAULT 0,
-  points        NUMERIC(12,2) NOT NULL DEFAULT 0,
-  rewards_available INT NOT NULL DEFAULT 0,
+  stamps        INT NOT NULL DEFAULT 0 CHECK (stamps >= 0),
+  points        NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (points >= 0),
+  rewards_available INT NOT NULL DEFAULT 0 CHECK (rewards_available >= 0),
   wallet_status TEXT NOT NULL DEFAULT 'none',    -- none | apple | google | both
   announcement  TEXT,
   announcement_expires_at TIMESTAMPTZ,
@@ -151,10 +152,13 @@ CREATE TABLE transactions (
   stamps_delta  INT DEFAULT 0,
   comment       TEXT,
   source        TEXT NOT NULL DEFAULT 'scanner', -- scanner | dashboard | api
+  client_tx_id  TEXT,                            -- idempotency key from offline scanner
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_tx_tenant_date ON transactions (tenant_id, created_at DESC);
 CREATE INDEX idx_tx_customer ON transactions (customer_id, created_at DESC);
+CREATE INDEX idx_tx_pass_type_date ON transactions (pass_id, type, created_at DESC);
+CREATE UNIQUE INDEX idx_tx_client_tx_id ON transactions (client_tx_id) WHERE client_tx_id IS NOT NULL;
 
 -- ---------- Notifications ----------
 CREATE TABLE notifications (
@@ -168,6 +172,10 @@ CREATE TABLE notifications (
   status      TEXT NOT NULL DEFAULT 'queued',          -- queued | sent | failed | simulated
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE INDEX idx_notifications_pass_automation ON notifications (pass_id, automation_id);
+CREATE INDEX idx_customers_tenant ON customers (tenant_id);
+CREATE INDEX idx_customer_passes_tenant ON customer_passes (tenant_id);
+CREATE INDEX idx_users_tenant ON users (tenant_id);
 
 -- ---------- Audit / logs ----------
 CREATE TABLE audit_logs (

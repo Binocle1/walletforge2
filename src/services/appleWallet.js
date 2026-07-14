@@ -32,7 +32,8 @@ function apnsConfigured() {
 }
 
 // ---------- Construction du pass.json ----------
-function buildPassJson({ pass, program, business, customer }) {
+function buildPassJson(ctx) {
+  const { pass, program, business, customer } = ctx;
   const design = program.card_design || {};
   const fields = [];
 

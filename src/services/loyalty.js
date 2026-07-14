@@ -12,6 +12,7 @@ async function loadPassContext(passId) {
     `SELECT p.*, c.first_name, c.last_name, c.email AS customer_email,
             pr.id AS pr_id, pr.name AS pr_name, pr.type AS pr_type, pr.stamps_required,
             pr.reward_label, pr.points_per_unit, pr.points_for_reward, pr.card_design, pr.barcode_type,
+            pr.automations AS pr_automations,
             b.id AS b_id, b.name AS b_name, b.brand_color, b.text_color, b.logo_url, b.back_links,
             b.currency, b.country, b.tenant_id AS b_tenant
      FROM customer_passes p
@@ -27,7 +28,8 @@ async function loadPassContext(passId) {
     customer: { id: r.customer_id, first_name: r.first_name, last_name: r.last_name, email: r.customer_email },
     program: { id: r.pr_id, name: r.pr_name, type: r.pr_type, stamps_required: r.stamps_required,
                reward_label: r.reward_label, points_per_unit: r.points_per_unit,
-               points_for_reward: r.points_for_reward, card_design: r.card_design, barcode_type: r.barcode_type },
+               points_for_reward: r.points_for_reward, card_design: r.card_design, barcode_type: r.barcode_type,
+               automations: r.pr_automations || {} },
     business: { id: r.b_id, name: r.b_name, brand_color: r.brand_color, text_color: r.text_color,
                 logo_url: r.logo_url, back_links: r.back_links, currency: r.currency, country: r.country },
     locations: locs.rows,
@@ -52,87 +54,153 @@ async function createPass(tenantId, customerId, programId) {
  * - stamps : incrémente, débloque la récompense au palier, remet le compteur à zéro
  * - points : crédite selon le ratio, convertit en récompense si demandé
  * Retourne { pass, message } — message = notification transactionnelle.
+ *
+ * The entire read + write is done inside a single BEGIN / FOR UPDATE block
+ * to prevent race conditions and TOCTOU on anti-fraud checks.
  */
-async function applyTransaction({ passId, type, amount, userId, locationId, comment, source = 'scanner' }) {
-  const ctx = await loadPassContext(passId);
-  if (!ctx) throw new Error('Carte introuvable');
-  const { pass, program } = ctx;
-
-  let stampsDelta = 0, pointsDelta = 0, rewardsDelta = 0;
-  let message = '';
-
-  switch (type) {
-    case 'purchase': {
-      if (program.type === 'stamps') {
-        stampsDelta = 1;
-        const newStamps = pass.stamps + 1;
-        if (newStamps >= program.stamps_required) {
-          rewardsDelta = 1;
-          stampsDelta = -pass.stamps; // reset compteur
-          message = `🎉 Récompense débloquée : ${program.reward_label || 'récompense'} !`;
-        } else {
-          const left = program.stamps_required - newStamps;
-          message = `Merci ! Plus que ${left} tampon${left > 1 ? 's' : ''} avant votre récompense.`;
-        }
-      } else {
-        const pts = Math.round(Number(amount || 0) * Number(program.points_per_unit || 1) * 100) / 100;
-        pointsDelta = pts;
-        message = `Vous avez gagné ${pts} points. Merci pour votre achat !`;
-      }
-      break;
-    }
-    case 'add_stamp': stampsDelta = 1; message = 'Un tampon ajouté sur votre carte.'; break;
-    case 'remove_stamp': stampsDelta = pass.stamps > 0 ? -1 : 0; message = 'Correction : un tampon retiré.'; break;
-    case 'add_points': pointsDelta = Number(amount || 0); message = `${pointsDelta} points ajoutés.`; break;
-    case 'remove_points': pointsDelta = -Math.min(Number(amount || 0), Number(pass.points)); message = 'Points débités.'; break;
-    case 'reward_redeemed': {
-      if (program.type === 'points') {
-        if (Number(pass.points) < program.points_for_reward) throw new Error('Points insuffisants');
-        pointsDelta = -program.points_for_reward;
-      } else {
-        if (pass.rewards_available < 1) throw new Error('Aucune récompense disponible');
-        rewardsDelta = -1;
-      }
-      message = `Récompense utilisée : ${program.reward_label || 'récompense'}. À bientôt !`;
-      break;
-    }
-    case 'adjustment': stampsDelta = 0; pointsDelta = Number(amount || 0); message = 'Ajustement effectué sur votre carte.'; break;
-    default: throw new Error(`Type de transaction inconnu : ${type}`);
-  }
-
-  // Écriture atomique transaction + solde
+async function applyTransaction({ passId, type, amount, userId, locationId, comment, source = 'scanner', client_tx_id }) {
   const client = await db.pool.connect();
   try {
     await client.query('BEGIN');
+
+    // ── Load pass context inside the transaction with FOR UPDATE ──
+    const { rows: ctxRows } = await client.query(
+      `SELECT p.*, c.first_name, c.last_name, c.email AS customer_email,
+              pr.id AS pr_id, pr.name AS pr_name, pr.type AS pr_type, pr.stamps_required,
+              pr.reward_label, pr.points_per_unit, pr.points_for_reward, pr.card_design, pr.barcode_type,
+              pr.automations AS pr_automations,
+              b.id AS b_id, b.name AS b_name, b.brand_color, b.text_color, b.logo_url, b.back_links,
+              b.currency, b.country, b.tenant_id AS b_tenant
+       FROM customer_passes p
+       JOIN customers c ON c.id = p.customer_id
+       JOIN loyalty_programs pr ON pr.id = p.program_id
+       JOIN businesses b ON b.id = pr.business_id
+       WHERE p.id = $1
+       FOR UPDATE OF p`, [passId]);
+    if (!ctxRows[0]) throw new Error('Carte introuvable');
+    const r = ctxRows[0];
+    const locs = await client.query('SELECT latitude, longitude, relevant_text FROM locations WHERE business_id = $1 AND latitude IS NOT NULL', [r.b_id]);
+    const ctx = {
+      pass: r,
+      customer: { id: r.customer_id, first_name: r.first_name, last_name: r.last_name, email: r.customer_email },
+      program: { id: r.pr_id, name: r.pr_name, type: r.pr_type, stamps_required: r.stamps_required,
+                 reward_label: r.reward_label, points_per_unit: r.points_per_unit,
+                 points_for_reward: r.points_for_reward, card_design: r.card_design, barcode_type: r.barcode_type,
+                 automations: r.pr_automations || {} },
+      business: { id: r.b_id, name: r.b_name, brand_color: r.brand_color, text_color: r.text_color,
+                  logo_url: r.logo_url, back_links: r.back_links, currency: r.currency, country: r.country },
+      locations: locs.rows,
+      tenantId: r.tenant_id,
+    };
+    const { pass, program } = ctx;
+
+    // ── Anti-fraud check INSIDE the transaction (TOCTOU-safe) ──
+    if (['purchase', 'add_stamp', 'add_points'].includes(type)) {
+      const fraudLimit = (program.automations && program.automations.fraud_limit) || 5;
+      const recent = await client.query(
+        `SELECT count(*)::int AS n FROM transactions
+         WHERE pass_id = $1 AND type IN ('purchase','add_stamp','add_points')
+           AND created_at > now() - interval '1 hour'`,
+        [passId]
+      );
+      if (recent.rows[0].n >= fraudLimit) {
+        await client.query('ROLLBACK');
+        throw new Error(`Sécurité : Limite de ${fraudLimit} actions par heure sur la même carte.`);
+      }
+    }
+
+    // ── Business logic ──
+    let stampsDelta = 0, pointsDelta = 0, rewardsDelta = 0;
+    let message = '';
+
+    switch (type) {
+      case 'purchase': {
+        if (program.type === 'stamps') {
+          stampsDelta = 1;
+          const newStamps = pass.stamps + 1;
+          if (newStamps >= program.stamps_required) {
+            rewardsDelta = 1;
+            stampsDelta = -pass.stamps; // reset compteur
+            message = `🎉 Récompense débloquée : ${program.reward_label || 'récompense'} !`;
+          } else {
+            const left = program.stamps_required - newStamps;
+            message = `Merci ! Plus que ${left} tampon${left > 1 ? 's' : ''} avant votre récompense.`;
+          }
+        } else {
+          const pts = Math.round(Number(amount || 0) * Number(program.points_per_unit || 1) * 100) / 100;
+          pointsDelta = pts;
+          message = `Vous avez gagné ${pts} points. Merci pour votre achat !`;
+        }
+        break;
+      }
+      case 'add_stamp': stampsDelta = 1; message = 'Un tampon ajouté sur votre carte.'; break;
+      case 'remove_stamp': {
+        if (pass.stamps <= 0) throw new Error('Aucun tampon à retirer');
+        stampsDelta = -1;
+        message = 'Correction : un tampon retiré.';
+        break;
+      }
+      case 'add_points': pointsDelta = Number(amount || 0); message = `${pointsDelta} points ajoutés.`; break;
+      case 'remove_points': {
+        const toRemove = Number(amount || 0);
+        if (toRemove > Number(pass.points)) throw new Error('Points insuffisants pour le débit');
+        pointsDelta = -toRemove;
+        message = 'Points débités.';
+        break;
+      }
+      case 'reward_redeemed': {
+        if (program.type === 'points') {
+          if (Number(pass.points) < program.points_for_reward) throw new Error('Points insuffisants');
+          pointsDelta = -program.points_for_reward;
+        } else {
+          if (pass.rewards_available < 1) throw new Error('Aucune récompense disponible');
+          rewardsDelta = -1;
+        }
+        message = `Récompense utilisée : ${program.reward_label || 'récompense'}. À bientôt !`;
+        break;
+      }
+      case 'adjustment': stampsDelta = 0; pointsDelta = Number(amount || 0); message = 'Ajustement effectué sur votre carte.'; break;
+      default: throw new Error(`Type de transaction inconnu : ${type}`);
+    }
+
+    // ── Validate no negative balances ──
+    const newStamps = pass.stamps + stampsDelta;
+    const newPoints = Number(pass.points) + pointsDelta;
+    const newRewards = pass.rewards_available + rewardsDelta;
+    if (newStamps < 0) throw new Error('Le solde de tampons ne peut pas devenir négatif');
+    if (newPoints < 0) throw new Error('Le solde de points ne peut pas devenir négatif');
+    if (newRewards < 0) throw new Error('Le solde de récompenses ne peut pas devenir négatif');
+
+    // ── Write transaction + update balance atomically ──
     const txRes = await client.query(
       `INSERT INTO transactions (tenant_id, pass_id, customer_id, program_id, location_id, user_id,
-                                 type, amount, points_delta, stamps_delta, comment, source)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+                                 type, amount, points_delta, stamps_delta, comment, source, client_tx_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
       [ctx.tenantId, passId, pass.customer_id, program.id, locationId || null, userId || null,
-       type, amount || null, pointsDelta, stampsDelta, comment || null, source]);
+       type, amount || null, pointsDelta, stampsDelta, comment || null, source, client_tx_id || null]);
     const txId = txRes.rows[0].id;
     ctx.txId = txId;
     const { rows } = await client.query(
       `UPDATE customer_passes
-       SET stamps = greatest(0, stamps + $2),
-           points = greatest(0, points + $3),
-           rewards_available = greatest(0, rewards_available + $4),
+       SET stamps = $2,
+           points = $3,
+           rewards_available = $4,
            last_updated = now()
        WHERE id = $1 RETURNING *`,
-      [passId, stampsDelta, pointsDelta, rewardsDelta]);
+      [passId, newStamps, newPoints, newRewards]);
     await client.query('COMMIT');
     ctx.pass = { ...ctx.pass, ...rows[0] };
+
+    // Notification + rafraîchissement des wallets (best-effort, non bloquant, OUTSIDE the transaction)
+    notifyAndRefresh(ctx, message, 'transactional').catch((e) => console.error('[wallet-update]', e.message));
+
+    return { pass: ctx.pass, message, tx_id: ctx.txId };
   } catch (e) {
-    await client.query('ROLLBACK');
+    await client.query('ROLLBACK').catch(() => {});
     throw e;
   } finally {
     client.release();
   }
-
-  // Notification + rafraîchissement des wallets (best-effort, non bloquant)
-  notifyAndRefresh(ctx, message, 'transactional').catch((e) => console.error('[wallet-update]', e.message));
-
-  return { pass: ctx.pass, message, tx_id: ctx.txId };
 }
 
 async function notifyAndRefresh(ctx, message, type = 'transactional', automationId = null) {
