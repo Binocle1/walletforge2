@@ -203,9 +203,14 @@ function startScan() {
   scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 230, height: 230 } },
     (text) => { scanner.pause(true); openSerial(text); },
     () => {}).catch((err) => {
-      alert("Erreur Caméra : " + (err.message || err));
+      const msg = err.message || err;
+      if (String(msg).includes('null') || String(msg).includes('undefined') || String(msg).includes('NotAllowedError')) {
+        alert("Erreur: Le navigateur bloque la caméra car l'URL n'est pas sécurisée (HTTPS requis) ou l'accès est refusé.");
+      } else {
+        alert("Erreur Caméra : " + msg);
+      }
       document.getElementById('reader').innerHTML =
-        '<p style="padding:20px;color:#7fa094;font-size:14px">Caméra indisponible — utilise la recherche manuelle ci-dessous.</p>';
+        '<p style="padding:20px;color:#7fa094;font-size:14px">Caméra indisponible (nécessite HTTPS). Utilisez la recherche.</p>';
     });
 }
 function backToScan() { show('pScan'); if (scanner) scanner.resume(); }
