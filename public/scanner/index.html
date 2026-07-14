@@ -278,8 +278,6 @@ function renderProfile() {
     }
   }
   document.getElementById('cActions').innerHTML = acts.join('');
-  document.getElementById('amountRow').classList.remove('on');
-
   document.getElementById('cRecent').innerHTML = '<b>Dernières actions</b><br>' +
     (c.recent || []).map(r => `${new Date(r.created_at).toLocaleString('fr-FR')} — ${esc(r.type)}${r.amount ? ' ' + r.amount + '€' : ''}`).join('<br>') || '';
 }
