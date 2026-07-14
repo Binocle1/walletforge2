@@ -24,6 +24,9 @@ label{display:block;font-size:13px;font-weight:600;color:var(--muted);margin:12p
 .btn.amber{background:var(--amber-deep)}
 .btn.ghost{background:transparent;color:var(--pine);border:1px solid var(--line)}
 .btn.sm{padding:6px 12px;font-size:13px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.btn.loading{color:transparent!important;pointer-events:none;position:relative}
+.btn.loading::after{content:"";position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite}
 .card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:22px}
 /* signature : bord perforé façon carte à tampons */
 .punch{position:relative}
@@ -81,16 +84,16 @@ td{padding:10px;border-bottom:1px solid var(--line)}
       <button id="tabLogin" class="on" onclick="authTab('login')">Connexion</button>
       <button id="tabReg" onclick="authTab('reg')">Créer un compte</button>
     </div>
-    <div id="formLogin">
-      <label>Email ou Nom d'utilisateur</label><input id="lEmail" autocomplete="username">
+    <form id="formLogin" onsubmit="login(); return false;">
+      <label>Email ou Nom d'utilisateur</label><input id="lEmail" autocomplete="username" required>
       <label>Mot de passe</label>
       <div class="pwd-wrap">
-        <input id="lPass" type="password" autocomplete="current-password">
+        <input id="lPass" type="password" autocomplete="current-password" required>
         <button type="button" class="pwd-toggle" onclick="togglePwd('lPass')">👁️</button>
       </div>
-      <div style="text-align:right;margin-top:8px"><a href="#" onclick="showForgot()" style="font-size:13px;color:var(--pine)">Mot de passe oublié ?</a></div>
-      <button class="btn" style="width:100%;margin-top:14px" onclick="login()">Se connecter</button>
-    </div>
+      <div style="text-align:right;margin-top:8px"><a href="javascript:void(0)" onclick="showForgot()" style="font-size:13px;color:var(--pine)">Mot de passe oublié ?</a></div>
+      <button class="btn" style="width:100%;margin-top:14px" type="submit" id="btnLogin">Se connecter</button>
+    </form>
     <div id="formForgot" style="display:none">
       <h2 style="font-size:18px;margin-bottom:10px">Mot de passe oublié</h2>
       <label>Email ou Nom d'utilisateur</label><input id="fEmail">
@@ -106,21 +109,21 @@ td{padding:10px;border-bottom:1px solid var(--line)}
       </div>
       <button class="btn amber" style="width:100%;margin-top:14px" onclick="resetPass()">Valider</button>
     </div>
-    <div id="formReg" style="display:none">
-      <label>Nom du commerce</label><input id="rBiz" placeholder="Café Gordon">
-      <label>Ton nom</label><input id="rName">
-      <label>Email</label><input id="rEmail" type="email">
+    <form id="formReg" style="display:none" onsubmit="register(); return false;">
+      <label>Nom du commerce</label><input id="rBiz" placeholder="Café Gordon" required>
+      <label>Ton nom</label><input id="rName" required>
+      <label>Email</label><input id="rEmail" type="email" required>
       <label>Mot de passe (8+ caractères)</label>
       <div class="pwd-wrap">
-        <input id="rPass" type="password">
+        <input id="rPass" type="password" minlength="8" required>
         <button type="button" class="pwd-toggle" onclick="togglePwd('rPass')">👁️</button>
       </div>
       <div class="row">
-        <div style="flex:1"><label>Pays</label><input id="rCountry" value="FR"></div>
-        <div style="flex:1"><label>Devise</label><input id="rCurrency" value="EUR"></div>
+        <div style="flex:1"><label>Pays</label><input id="rCountry" value="FR" required></div>
+        <div style="flex:1"><label>Devise</label><input id="rCurrency" value="EUR" required></div>
       </div>
-      <button class="btn amber" style="width:100%;margin-top:18px" onclick="register()">Créer mon compte</button>
-    </div>
+      <button class="btn" style="width:100%;margin-top:14px" type="submit" id="btnReg">Créer mon espace</button>
+    </form>
   </div>
 </div>
 
@@ -170,7 +173,7 @@ td{padding:10px;border-bottom:1px solid var(--line)}
         <div class="row">
           <button class="btn ghost" style="margin-right:8px" onclick="(async()=>{try{const r=await fetch(API+'/customers/export/marketing',{headers:{Authorization:'Bearer '+TOKEN}});if(!r.ok)throw new Error('Erreur '+r.status);const b=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='export-marketing.csv';a.click();URL.revokeObjectURL(a.href);}catch(e){toast(e.message,1);}})()">Export Marketing (CSV)</button>
           <button class="btn amber" onclick="openModal('mNotifyAll')">Notifier tous les clients</button>
-          <input id="custSearch" placeholder="Rechercher…" style="max-width:260px;margin-left:8px" oninput="loadCustomers()">
+          <input id="custSearch" placeholder="Rechercher…" style="max-width:260px;margin-left:8px" oninput="debouncedLoadCustomers()">
         </div>
       </div>
       <div class="card" style="overflow-x:auto"><table id="custTable">
@@ -284,9 +287,10 @@ td{padding:10px;border-bottom:1px solid var(--line)}
 </div>
 
 <!-- ---- modal nouveau programme ---- -->
-<div class="modal" id="mProgram"><div class="card">
+<div class="modal" id="mProgram">
+  <form class="card" onsubmit="saveProgram(); return false;">
   <h2 style="margin-bottom:14px">Nouveau programme</h2>
-  <label>Nom du programme</label><input id="pName" placeholder="Carte café">
+  <label>Nom du programme</label><input id="pName" placeholder="Carte café" required>
   <label>Type</label>
   <select id="pType" onchange="pTypeSwitch()">
     <option value="stamps">Carte à tampons (10 achetés → 1 offert)</option>
@@ -294,7 +298,7 @@ td{padding:10px;border-bottom:1px solid var(--line)}
     <option value="giftcard">Carte Cadeau (Prépayée)</option>
   </select>
   <div id="pStamps">
-    <label>Tampons nécessaires</label><input id="pReq" type="number" value="10" min="2">
+    <label>Tampons nécessaires</label><input id="pReq" type="number" value="10" min="2" required>
   </div>
   <div id="pPoints" style="display:none">
     <div class="row">
@@ -308,10 +312,11 @@ td{padding:10px;border-bottom:1px solid var(--line)}
     <div style="flex:1"><label>Texte de carte</label><input id="pFg" type="color" value="#ffffff" style="height:44px;padding:4px"></div>
   </div>
   <div class="row" style="margin-top:18px;justify-content:flex-end">
-    <button class="btn ghost" onclick="closeModal('mProgram')">Annuler</button>
-    <button class="btn amber" onclick="createProgram()">Créer le programme</button>
+    <button type="button" class="btn ghost" onclick="closeModal('mProgram')">Annuler</button>
+    <button class="btn amber" type="submit">Créer le programme</button>
   </div>
-</div></div>
+  </form>
+</div>
 
 <!-- ---- modal QR ---- -->
 <div class="modal" id="mQr"><div class="card" style="text-align:center">
@@ -373,13 +378,14 @@ td{padding:10px;border-bottom:1px solid var(--line)}
 </div></div>
 
 <!-- ---- modal team ---- -->
-<div class="modal" id="mTeam"><div class="card">
+<div class="modal" id="mTeam">
+  <form class="card" onsubmit="addTeamMember(); return false;">
   <h2 style="margin-bottom:14px">Nouveau membre</h2>
-  <label>Nom complet</label><input id="tmName" placeholder="Paul (Caissier)">
-  <label>Nom d'utilisateur (pour se connecter)</label><input id="tmUser" placeholder="paul_cafe">
+  <label>Nom complet</label><input id="tmName" placeholder="Paul (Caissier)" required>
+  <label>Nom d'utilisateur (pour se connecter)</label><input id="tmUser" placeholder="paul_cafe" required>
   <label>Mot de passe</label>
   <div class="pwd-wrap">
-    <input id="tmPass" type="password">
+    <input id="tmPass" type="password" required>
     <button type="button" class="pwd-toggle" onclick="togglePwd('tmPass')">👁️</button>
   </div>
   <label>Rôle</label>
@@ -389,11 +395,14 @@ td{padding:10px;border-bottom:1px solid var(--line)}
     <option value="admin">Administrateur</option>
   </select>
   <div class="row" style="margin-top:18px;justify-content:flex-end">
-    <button class="btn ghost" onclick="closeModal('mTeam')">Annuler</button>
-    <button class="btn amber" onclick="addTeamMember()">Ajouter</button>
+    <button type="button" class="btn ghost" onclick="closeModal('mTeam')">Annuler</button>
+    <button class="btn amber" type="submit">Ajouter</button>
   </div>
-</div></div>
-<div class="modal" id="mAutomations"><div class="card">
+  </form>
+</div>
+<!-- ---- modal automations ---- -->
+<div class="modal" id="mAutomations">
+  <form class="card" onsubmit="saveAutomations(); return false;">
   <h2 id="maTitle" style="margin-bottom:14px">Automatisations</h2>
   <p style="color:var(--muted);font-size:14px;margin-bottom:18px">Configurez des messages Push envoyés automatiquement.</p>
   
@@ -433,10 +442,11 @@ td{padding:10px;border-bottom:1px solid var(--line)}
   </div>
 
   <div class="row" style="margin-top:18px;justify-content:flex-end">
-    <button class="btn ghost" onclick="closeModal('mAutomations')">Annuler</button>
-    <button class="btn amber" onclick="saveAutomations()">Enregistrer</button>
+    <button type="button" class="btn ghost" onclick="closeModal('mAutomations')">Annuler</button>
+    <button class="btn amber" type="submit">Enregistrer</button>
   </div>
-</div></div>
+  </form>
+</div>
 
 <div class="toast" id="toast"></div>
 
@@ -455,6 +465,11 @@ async function api(path, opts = {}) {
   if (!res.ok) throw new Error(data.error || 'Erreur ' + res.status);
   return data;
 }
+async function withLoading(btnIdOrEl, asyncFn) {
+  const btn = typeof btnIdOrEl === 'string' ? document.getElementById(btnIdOrEl) : btnIdOrEl;
+  if (btn) btn.classList.add('loading');
+  try { await asyncFn(); } finally { if (btn) btn.classList.remove('loading'); }
+}
 function toast(msg, err) {
   const t = document.getElementById('toast');
   t.textContent = msg; t.style.background = err ? 'var(--danger)' : 'var(--ink)';
@@ -466,6 +481,15 @@ function togglePwd(id) {
   const el = document.getElementById(id);
   el.type = el.type === 'password' ? 'text' : 'password';
 }
+
+function debounce(func, wait) {
+  let timeout;
+  return function(...args) {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func.apply(this, args), wait);
+  };
+}
+const debouncedLoadCustomers = debounce(() => loadCustomers(), 300);
 
 // ---------- auth ----------
 function authTab(t) {
@@ -497,19 +521,23 @@ async function resetPass() {
   } catch(e) { toast(e.message, 1); }
 }
 async function login() {
-  try {
-    const r = await api('/auth/login', { method: 'POST', body: { email: lEmail.value, password: lPass.value } });
-    TOKEN = r.token; localStorage.setItem('wf_token', TOKEN); boot();
-  } catch (e) { toast(e.message, 1); }
+  await withLoading('btnLogin', async () => {
+    try {
+      const r = await api('/auth/login', { method: 'POST', body: { email: lEmail.value, password: lPass.value } });
+      TOKEN = r.token; localStorage.setItem('wf_token', TOKEN); boot();
+    } catch (e) { toast(e.message, 1); }
+  });
 }
 async function register() {
-  try {
-    const r = await api('/auth/register', { method: 'POST', body: {
-      business_name: rBiz.value, full_name: rName.value, email: rEmail.value,
-      password: rPass.value, country: rCountry.value, currency: rCurrency.value } });
-    TOKEN = r.token; localStorage.setItem('wf_token', TOKEN); boot();
-    toast('Bienvenue ! Crée ton premier programme de fidélité 🎉');
-  } catch (e) { toast(e.message, 1); }
+  await withLoading('btnReg', async () => {
+    try {
+      const r = await api('/auth/register', { method: 'POST', body: {
+        business_name: rBiz.value, full_name: rName.value, email: rEmail.value,
+        password: rPass.value, country: rCountry.value, currency: rCurrency.value } });
+      TOKEN = r.token; localStorage.setItem('wf_token', TOKEN); boot();
+      toast('Bienvenue ! Crée ton premier programme de fidélité 🎉');
+    } catch (e) { toast(e.message, 1); }
+  });
 }
 function logout() { localStorage.removeItem('wf_token'); location.reload(); }
 

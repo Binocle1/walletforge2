@@ -24,10 +24,12 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'", "https://unpkg.com"],
+      scriptSrcAttr: ["'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       imgSrc: ["'self'", "data:", "blob:", "https:"],
       connectSrc: ["'self'"],
+      workerSrc: ["'self'", "blob:"],
     },
   },
   crossOriginEmbedderPolicy: false, // needed for external fonts/images
@@ -36,7 +38,8 @@ app.use(helmet({
 app.use((req, res, next) => {
   // CORS explicite
   const origin = req.headers.origin;
-  if (origin) {
+  const ALLOWED = process.env.BASE_URL ? [process.env.BASE_URL] : [];
+  if (origin && (ALLOWED.includes(origin) || process.env.NODE_ENV !== 'production')) {
     res.set('Access-Control-Allow-Origin', origin);
     res.set('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
     res.set('Access-Control-Allow-Headers', 'Content-Type,Authorization');
