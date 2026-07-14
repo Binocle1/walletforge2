@@ -11,7 +11,8 @@ const AMOUNT_REQUIRED_TYPES = ['purchase', 'add_points', 'remove_points'];
 // GET /api/scan/:serial — le scanner lit un QR et affiche le profil fidélité
 router.get('/scan/:serial', required, roles(...CAN_SCAN), async (req, res) => {
   const { rows } = await db.query(
-    `SELECT p.id AS pass_id, p.serial_number, p.stamps, p.points, p.rewards_available, p.wallet_status, p.tags, p.current_streak,
+    `SELECT p.id AS pass_id, p.serial_number, p.stamps, p.points, p.rewards_available, p.wallet_status, c.tags,
+
             c.id AS customer_id, c.first_name, c.last_name, c.email,
             pr.name AS program_name, pr.type, pr.stamps_required, pr.reward_label,
             pr.points_per_unit, pr.points_for_reward, pr.automations
