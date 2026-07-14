@@ -111,6 +111,9 @@ router.get('/v1/passes/:passTypeId/:serial', async (req, res) => {
   const ctx = await loyalty.loadPassContext(pass.id);
   try {
     const buf = await apple.generatePkpass(ctx);
+    // Le téléphone vient de retélécharger le pass : c'est la preuve que la notif
+    // est bien arrivée sur l'appareil -> on marque les notifs en attente comme "délivrées".
+    loyalty.markDelivered(pass.id).catch(() => {});
     res.set('Content-Type', 'application/vnd.apple.pkpass').send(buf);
   } catch {
     res.status(503).end();

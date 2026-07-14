@@ -226,10 +226,55 @@ td{padding:10px;border-bottom:1px solid var(--line)}
     </div>
 
     <div class="section" id="s-notifs">
-      <h1 style="margin-bottom:18px">Historique des notifications Push</h1>
-      <div class="card" style="overflow-x:auto"><table id="notifTable">
-        <thead><tr><th>Date</th><th>Client</th><th>Message</th><th>Type</th><th>Wallet</th><th>Statut</th></tr></thead>
-        <tbody></tbody></table></div>
+      <div class="row" style="justify-content:space-between;margin-bottom:18px">
+        <h1>Notifications</h1>
+        <button class="btn amber" onclick="openCampaign()">+ Nouvelle campagne</button>
+      </div>
+
+      <!-- KPIs 30 jours -->
+      <div class="grid s4" id="nKpis" style="margin-bottom:18px"></div>
+
+      <!-- Onglets du hub -->
+      <div class="tabs" style="max-width:560px">
+        <button id="ntCampaigns" class="on" onclick="notifTab('campaigns')">Campagnes</button>
+        <button id="ntAuto" onclick="notifTab('auto')">Automatisations</button>
+        <button id="ntLog" onclick="notifTab('log')">Journal</button>
+      </div>
+
+      <!-- 1. CAMPAGNES -->
+      <div id="npCampaigns">
+        <div class="card" style="overflow-x:auto"><table id="campTable">
+          <thead><tr><th>Campagne</th><th>Cible</th><th>Statut</th><th>Envoyées</th><th>Délivrées</th><th>Clics</th><th>Conversions</th><th>CA généré</th><th></th></tr></thead>
+          <tbody></tbody></table></div>
+      </div>
+
+      <!-- 2. AUTOMATISATIONS (centralisées, tous programmes) -->
+      <div id="npAuto" style="display:none">
+        <div id="autoList"></div>
+      </div>
+
+      <!-- 3. JOURNAL -->
+      <div id="npLog" style="display:none">
+        <div class="row" style="margin-bottom:12px">
+          <select id="lgType" style="max-width:190px" onchange="loadLog()">
+            <option value="">Tous les types</option>
+            <option value="marketing">Campagne</option>
+            <option value="automation">Automatisation</option>
+            <option value="transactional">Transactionnel</option>
+          </select>
+          <select id="lgStatus" style="max-width:190px" onchange="loadLog()">
+            <option value="">Tous les statuts</option>
+            <option value="delivered">Délivrées</option>
+            <option value="clicked">Cliquées</option>
+            <option value="converted">Converties</option>
+            <option value="failed">En échec</option>
+          </select>
+          <input id="lgQ" placeholder="Rechercher un client / un message…" style="max-width:280px" oninput="loadLog()">
+        </div>
+        <div class="card" style="overflow-x:auto"><table id="logTable">
+          <thead><tr><th>Date</th><th>Client</th><th>Message</th><th>Origine</th><th>Wallet</th><th>Parcours</th></tr></thead>
+          <tbody></tbody></table></div>
+      </div>
     </div>
 
     <div class="section" id="s-settings">
@@ -288,7 +333,7 @@ td{padding:10px;border-bottom:1px solid var(--line)}
 
 <!-- ---- modal nouveau programme ---- -->
 <div class="modal" id="mProgram">
-  <form class="card" onsubmit="saveProgram(); return false;">
+  <form class="card" onsubmit="createProgram(); return false;">
   <h2 style="margin-bottom:14px">Nouveau programme</h2>
   <label>Nom du programme</label><input id="pName" placeholder="Carte café" required>
   <label>Type</label>
@@ -403,36 +448,18 @@ td{padding:10px;border-bottom:1px solid var(--line)}
 <!-- ---- modal automations ---- -->
 <div class="modal" id="mAutomations">
   <form class="card" onsubmit="saveAutomations(); return false;">
-  <h2 id="maTitle" style="margin-bottom:14px">Automatisations</h2>
-  <p style="color:var(--muted);font-size:14px;margin-bottom:18px">Configurez des messages Push envoyés automatiquement.</p>
-  
-  <div class="card punch" style="margin-bottom:12px;padding:16px">
-    <h3>👋 Bienvenue</h3>
-    <p style="font-size:13px;color:var(--muted);margin-bottom:8px">Envoyé juste après l'inscription (installation de la carte).</p>
-    <label><input type="checkbox" id="maWelcomeOn"> Activer</label>
-    <input id="maWelcomeMsg" placeholder="Bienvenue chez nous !" style="margin-bottom:8px">
-    <label><input type="checkbox" id="maWelcomeBonus"> Offrir 1 tampon / unité bonus à l'inscription</label>
-  </div>
-  
-  <div class="card punch" style="margin-bottom:12px;padding:16px">
-    <h3>🎂 Anniversaire</h3>
-    <p style="font-size:13px;color:var(--muted);margin-bottom:8px">Envoyé le jour de l'anniversaire du client.</p>
-    <label><input type="checkbox" id="maBdayOn"> Activer</label>
-    <input id="maBdayMsg" placeholder="Joyeux anniversaire ! Venez fêter ça avec nous !">
-  </div>
-  
-  <div class="card punch" style="margin-bottom:12px;padding:16px">
-    <h3>💤 Relance (inactif > 30j)</h3>
-    <p style="font-size:13px;color:var(--muted);margin-bottom:8px">Envoyé si le client n'est pas venu depuis 30 jours.</p>
-    <label><input type="checkbox" id="maWinbackOn"> Activer</label>
-    <input id="maWinbackMsg" placeholder="Vous nous manquez ! Revenez vite !">
-  </div>
-  
-  <div class="card punch" style="margin-bottom:12px;padding:16px">
-    <h3>⭐ Avis Google (1h après 1er achat)</h3>
-    <p style="font-size:13px;color:var(--muted);margin-bottom:8px">Envoyé 1 heure après la toute première visite du client.</p>
-    <label><input type="checkbox" id="maReviewOn"> Activer</label>
-    <input id="maReviewMsg" placeholder="Merci pour votre visite ! Laissez-nous un avis :)">
+  <h2 id="maTitle" style="margin-bottom:14px">Récompenses du programme</h2>
+  <p style="color:var(--muted);font-size:14px;margin-bottom:18px">
+    Les <b>messages automatiques</b> (bienvenue, anniversaire, relance, avis) se règlent désormais
+    dans <b>Notifications → Automatisations</b>, avec toutes les autres notifications.
+  </p>
+  <!-- Champs conservés (masqués) : édités depuis le hub Notifications, mais présents
+       ici pour que saveAutomations() ne les écrase pas quand on règle les récompenses. -->
+  <div style="display:none">
+    <input type="checkbox" id="maWelcomeOn"><input id="maWelcomeMsg"><input type="checkbox" id="maWelcomeBonus">
+    <input type="checkbox" id="maBdayOn"><input id="maBdayMsg">
+    <input type="checkbox" id="maWinbackOn"><input id="maWinbackMsg">
+    <input type="checkbox" id="maReviewOn"><input id="maReviewMsg">
   </div>
 
   <div class="card punch" style="margin-bottom:12px;padding:16px">
@@ -447,6 +474,54 @@ td{padding:10px;border-bottom:1px solid var(--line)}
   </div>
   </form>
 </div>
+
+<!-- ===== Modale : nouvelle campagne ===== -->
+<div class="modal" id="mCampaign"><div class="card">
+  <h2 style="margin-bottom:14px">Nouvelle campagne</h2>
+  <label>Nom interne (invisible pour le client)</label>
+  <input id="cpName" placeholder="Relance des endormis — juillet">
+
+  <label>Programme concerné</label>
+  <select id="cpProgram" onchange="refreshAudience()"><option value="">Tous les programmes</option></select>
+
+  <label>Cible</label>
+  <select id="cpSegment" onchange="refreshAudience()"></select>
+  <div id="cpAudience" style="font-size:13px;color:var(--muted);margin-top:6px"></div>
+
+  <label>Message affiché sur la carte (240 car. max)</label>
+  <textarea id="cpMsg" rows="3" maxlength="240" oninput="document.getElementById('cpCount').textContent = this.value.length + '/240'"
+            placeholder="-20 % sur tout le menu jusqu'à dimanche, montrez votre carte en caisse !"></textarea>
+  <div style="text-align:right;font-size:12px;color:var(--muted)" id="cpCount">0/240</div>
+
+  <label>Lien d'action (optionnel — c'est lui qui permet de savoir qui a cliqué)</label>
+  <input id="cpCta" placeholder="https://mon-site.fr/promo-ete">
+
+  <label>Envoi</label>
+  <select id="cpWhen" onchange="document.getElementById('cpDateWrap').style.display = this.value === 'schedule' ? '' : 'none'">
+    <option value="now">Envoyer maintenant</option>
+    <option value="schedule">Programmer</option>
+    <option value="draft">Enregistrer en brouillon</option>
+  </select>
+  <div id="cpDateWrap" style="display:none"><label>Date et heure</label><input id="cpDate" type="datetime-local"></div>
+
+  <div class="row" style="margin-top:18px;justify-content:flex-end">
+    <button class="btn ghost" onclick="closeModal('mCampaign')">Annuler</button>
+    <button class="btn amber" onclick="saveCampaign()">Valider</button>
+  </div>
+</div></div>
+
+<!-- ===== Modale : détail d'une campagne (qui a cliqué, qui est revenu) ===== -->
+<div class="modal" id="mCampDetail"><div class="card" style="max-width:820px">
+  <div class="row" style="justify-content:space-between">
+    <h2 id="cdTitle">Campagne</h2>
+    <button class="btn ghost sm" onclick="closeModal('mCampDetail')">Fermer</button>
+  </div>
+  <div id="cdKpis" class="grid s4" style="margin:14px 0"></div>
+  <p style="font-size:13px;color:var(--muted);margin-bottom:8px">Détail destinataire par destinataire — cliqué et « revenu » (transaction dans les 72 h suivant l'envoi).</p>
+  <div style="overflow-x:auto;max-height:44vh"><table id="cdTable">
+    <thead><tr><th>Client</th><th>Wallet</th><th>Envoyé</th><th>Délivré</th><th>Cliqué</th><th>Revenu en boutique</th></tr></thead>
+    <tbody></tbody></table></div>
+</div></div>
 
 <div class="toast" id="toast"></div>
 
@@ -603,7 +678,7 @@ async function loadPrograms() {
         <span class="pill ${p.active ? 'g' : 'n'}">${p.active ? 'Actif' : 'Inactif'} · ${p.cards} carte(s)</span>
         <div class="row" style="gap:8px">
           <button class="btn sm ghost" onclick="showQr('${p.id}','${esc(p.name)}')">QR d'inscription</button>
-          <button class="btn sm ghost" onclick="editAutomations('${p.id}','${esc(p.name)}')">Automatisations</button>
+          <button class="btn sm ghost" onclick="editAutomations('${p.id}','${esc(p.name)}')">🎁 Récompenses</button>
           <button class="btn sm ghost" onclick="toggleProgram('${p.id}',${!p.active})">${p.active ? 'Désactiver' : 'Activer'}</button>
         </div>
       </div>
@@ -854,18 +929,210 @@ async function loadStats() {
 }
 
 // ---------- notifications ----------
+// ================= HUB NOTIFICATIONS =================
+let SEGMENTS = [];
+let notifSubTab = 'campaigns';
+
 async function loadNotifs() {
-  const list = await api('/notifications');
-  const typeLbl = { transactional: 'Transaction', automation: 'Automatique', manual: 'Manuel' };
-  const statLbl = { simulated: '<span class="pill n">En attente / Simulé</span>', sent: '<span class="pill g">Envoyé</span>', failed: '<span class="pill a" style="background:#fcebe9;color:var(--danger)">Échec</span>' };
-  const wLbl = { apple: 'Apple', google: 'Google', both: 'Les deux', none: 'Aucun' };
-  document.querySelector('#notifTable tbody').innerHTML = list.map(n => `<tr>
-    <td style="font-size:13px">${new Date(n.created_at).toLocaleString('fr-FR')}</td>
-    <td>${esc(n.first_name)} ${esc(n.last_name || '')}</td>
-    <td>${esc(n.message)}</td>
-    <td>${typeLbl[n.type] || esc(n.type)}</td>
-    <td>${wLbl[n.wallet_status] || esc(n.wallet_status)}</td>
-    <td>${statLbl[n.status] || esc(n.status)}</td>
+  // KPIs (30 j) — un seul endroit pour tout piloter
+  const o = await api('/notifications/overview');
+  const kpi = (label, val, sub) =>
+    `<div class="card stat"><small>${label}</small><h2>${val}</h2>${sub ? `<div style="font-size:12px;color:var(--muted)">${sub}</div>` : ''}</div>`;
+  document.getElementById('nKpis').innerHTML =
+    kpi('Envoyées (30j)', o.sent, `${o.marketing} campagne · ${o.automation} auto · ${o.transactional} transac.`) +
+    kpi('Délivrées', o.delivered, o.delivery_rate + ' % des envois') +
+    kpi('Clics', o.clicked, o.click_rate + ' % de clics') +
+    kpi('Revenus en boutique', o.converted, o.conv_rate + ' % · ' + Number(o.revenue || 0).toFixed(0) + ' € générés') +
+    kpi('Désinscriptions', o.unsubscribed, 'sur 30 jours') +
+    kpi('Base opt-in', o.optin, `sur ${o.optin_total} clients`);
+
+  notifTab(notifSubTab);
+}
+
+function notifTab(t) {
+  notifSubTab = t;
+  const map = { campaigns: 'npCampaigns', auto: 'npAuto', log: 'npLog' };
+  const btns = { campaigns: 'ntCampaigns', auto: 'ntAuto', log: 'ntLog' };
+  Object.entries(map).forEach(([k, id]) => document.getElementById(id).style.display = k === t ? '' : 'none');
+  Object.entries(btns).forEach(([k, id]) => document.getElementById(id).classList.toggle('on', k === t));
+  if (t === 'campaigns') loadCampaigns();
+  if (t === 'auto') loadAutomations();
+  if (t === 'log') loadLog();
+}
+
+// ---------- Campagnes ----------
+const CAMP_STATUS = {
+  draft: '<span class="pill n">Brouillon</span>',
+  scheduled: '<span class="pill a">Programmée</span>',
+  sending: '<span class="pill a">Envoi en cours…</span>',
+  sent: '<span class="pill g">Envoyée</span>',
+  failed: '<span class="pill n" style="background:#fcebe9;color:var(--danger)">Échec</span>',
+  canceled: '<span class="pill n">Annulée</span>',
+};
+
+async function loadCampaigns() {
+  const list = await api('/notifications/campaigns');
+  const segLbl = Object.fromEntries((SEGMENTS.length ? SEGMENTS : []).map(s => [s.key, s.label]));
+  document.querySelector('#campTable tbody').innerHTML = list.map(c => `<tr>
+    <td><b>${esc(c.name)}</b><br><small style="color:var(--muted)">${esc((c.message || '').slice(0, 60))}${c.message && c.message.length > 60 ? '…' : ''}</small></td>
+    <td style="font-size:13px">${esc(segLbl[c.segment] || c.segment)}<br><small style="color:var(--muted)">${esc(c.program_name || 'Tous programmes')}</small></td>
+    <td>${CAMP_STATUS[c.status] || esc(c.status)}${c.scheduled_at ? `<br><small style="color:var(--muted)">${new Date(c.scheduled_at).toLocaleString('fr-FR')}</small>` : ''}</td>
+    <td>${c.sent}</td>
+    <td>${c.delivered}</td>
+    <td><b>${c.clicked}</b>${c.sent ? ` <small style="color:var(--muted)">(${Math.round(c.clicked / c.sent * 100)} %)</small>` : ''}</td>
+    <td>${c.converted}</td>
+    <td><b>${Number(c.revenue || 0).toFixed(0)} €</b></td>
+    <td style="white-space:nowrap">
+      <button class="btn sm ghost" onclick="openCampDetail('${c.id}')">Détail</button>
+      ${['draft', 'scheduled'].includes(c.status) ? `<button class="btn sm amber" onclick="sendCampaign('${c.id}')">Envoyer</button>` : ''}
+      ${['draft', 'scheduled'].includes(c.status) ? `<button class="btn sm ghost" onclick="cancelCampaign('${c.id}')">Annuler</button>` : ''}
+    </td>
+  </tr>`).join('') || '<tr><td colspan="9" style="color:var(--muted)">Aucune campagne. Crée ta première relance — les clients endormis, c\'est le meilleur ROI.</td></tr>';
+}
+
+async function openCampaign() {
+  // programmes + segments (avec l'audience estimée en direct)
+  const progs = await api('/programs');
+  document.getElementById('cpProgram').innerHTML =
+    '<option value="">Tous les programmes</option>' +
+    progs.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+  await refreshAudience();
+  openModal('mCampaign');
+}
+
+async function refreshAudience() {
+  const pid = document.getElementById('cpProgram').value;
+  SEGMENTS = await api('/notifications/segments' + (pid ? '?program_id=' + pid : ''));
+  const sel = document.getElementById('cpSegment');
+  const keep = sel.value;
+  sel.innerHTML = SEGMENTS.map(s => `<option value="${s.key}">${esc(s.label)} — ${s.count} client(s)</option>`).join('');
+  if (keep) sel.value = keep;
+  const cur = SEGMENTS.find(s => s.key === sel.value) || SEGMENTS[0];
+  document.getElementById('cpAudience').textContent =
+    cur ? `${cur.count} carte(s) recevront ce message (clients opt-in uniquement).` : '';
+}
+
+async function saveCampaign() {
+  try {
+    const when = document.getElementById('cpWhen').value;
+    const body = {
+      name: document.getElementById('cpName').value,
+      program_id: document.getElementById('cpProgram').value || null,
+      segment: document.getElementById('cpSegment').value,
+      message: document.getElementById('cpMsg').value,
+      cta_url: document.getElementById('cpCta').value || null,
+      when,
+      scheduled_at: when === 'schedule' ? document.getElementById('cpDate').value : null,
+    };
+    const r = await api('/notifications/campaigns', { method: 'POST', body });
+    closeModal('mCampaign');
+    toast(when === 'now' ? `Envoi lancé vers ${r.audience_count} client(s) 🚀` : 'Campagne enregistrée ✔');
+    setTimeout(loadNotifs, 1200);
+  } catch (e) { toast(e.message, 1); }
+}
+
+async function sendCampaign(id) {
+  try {
+    await api('/notifications/campaigns/' + id + '/send', { method: 'POST' });
+    toast('Envoi lancé 🚀'); setTimeout(loadNotifs, 1200);
+  } catch (e) { toast(e.message, 1); }
+}
+async function cancelCampaign(id) {
+  try { await api('/notifications/campaigns/' + id + '/cancel', { method: 'POST' }); toast('Campagne annulée'); loadCampaigns(); }
+  catch (e) { toast(e.message, 1); }
+}
+
+async function openCampDetail(id) {
+  try {
+    const { campaign: c, recipients } = await api('/notifications/campaigns/' + id);
+    document.getElementById('cdTitle').textContent = c.name;
+    const clicked = recipients.filter(r => r.clicked_at).length;
+    const conv = recipients.filter(r => r.converted_at).length;
+    const deliv = recipients.filter(r => r.delivered_at).length;
+    const rev = recipients.reduce((s, r) => s + Number(r.revenue || 0), 0);
+    const k = (l, v) => `<div class="card stat"><small>${l}</small><h2>${v}</h2></div>`;
+    document.getElementById('cdKpis').innerHTML =
+      k('Envoyées', recipients.length) + k('Délivrées', deliv) + k('Clics', clicked) + k('CA généré', Number(rev).toFixed(0) + ' €');
+    const d = (x) => x ? new Date(x).toLocaleString('fr-FR') : '<span style="color:var(--muted)">—</span>';
+    document.querySelector('#cdTable tbody').innerHTML = recipients.map(r => `<tr>
+      <td><b>${esc(r.first_name)} ${esc(r.last_name || '')}</b><br><small style="color:var(--muted)">${esc(r.email || '')}</small></td>
+      <td>${esc(r.wallet_status)}</td>
+      <td style="font-size:12px">${d(r.created_at)}</td>
+      <td style="font-size:12px">${d(r.delivered_at)}</td>
+      <td style="font-size:12px">${r.clicked_at ? '<span class="pill g">Oui</span>' : '—'}</td>
+      <td style="font-size:12px">${r.converted_at ? `<span class="pill g">Oui · ${Number(r.revenue || 0).toFixed(0)} €</span>` : '—'}</td>
+    </tr>`).join('') || '<tr><td colspan="6" style="color:var(--muted)">Aucun destinataire.</td></tr>';
+    openModal('mCampDetail');
+  } catch (e) { toast(e.message, 1); }
+}
+
+// ---------- Automatisations (centralisées ici, plus dans la fiche programme) ----------
+let AUTO_CACHE = {};
+async function loadAutomations() {
+  const list = await api('/notifications/automations');
+  AUTO_CACHE = Object.fromEntries(list.map(p => [p.program_id, p.automations || {}]));
+  const field = (pid, key, label, hint, a) => `
+    <div class="card" style="padding:14px;margin-bottom:10px">
+      <div class="row" style="justify-content:space-between">
+        <div><b>${label}</b><br><small style="color:var(--muted)">${hint}</small></div>
+        <label style="margin:0"><input type="checkbox" style="width:auto" id="au_${pid}_${key}_on" ${a[key] && a[key].active ? 'checked' : ''}> Actif</label>
+      </div>
+      <input id="au_${pid}_${key}_msg" style="margin-top:8px" placeholder="Message affiché sur la carte" value="${esc((a[key] && a[key].msg) || '')}">
+    </div>`;
+  document.getElementById('autoList').innerHTML = list.map(p => {
+    const a = p.automations || {};
+    return `<div class="card punch" style="margin-bottom:16px">
+      <div class="row" style="justify-content:space-between;margin-bottom:12px">
+        <h3>${esc(p.name)} <span class="pill ${p.active ? 'g' : 'n'}">${p.active ? 'Actif' : 'Inactif'}</span></h3>
+        <small style="color:var(--muted)">${p.sent_30d} envoi(s) automatiques sur 30 j</small>
+      </div>
+      ${field(p.program_id, 'welcome', '👋 Bienvenue', "À l'inscription", a)}
+      ${field(p.program_id, 'birthday', '🎂 Anniversaire', 'Le jour J, une fois par an', a)}
+      ${field(p.program_id, 'winback', '💤 Relance', 'Client inactif depuis 30 jours', a)}
+      ${field(p.program_id, 'review', '⭐ Avis Google', '1 h après le premier achat', a)}
+      <div class="row" style="justify-content:flex-end;margin-top:10px">
+        <button class="btn sm amber" onclick="saveAutoFor('${p.program_id}')">Enregistrer</button>
+      </div>
+    </div>`;
+  }).join('') || '<p style="color:var(--muted)">Aucun programme. Crée d\'abord un programme de fidélité.</p>';
+}
+
+async function saveAutoFor(pid) {
+  try {
+    const get = (k, f) => document.getElementById(`au_${pid}_${k}_${f}`);
+    // On repart de l'objet existant pour ne PAS écraser multi_rewards / happy_hour
+    const automations = { ...(AUTO_CACHE[pid] || {}) };
+    ['welcome', 'birthday', 'winback', 'review'].forEach(k => {
+      automations[k] = { ...(automations[k] || {}), active: get(k, 'on').checked, msg: get(k, 'msg').value };
+    });
+    await api('/notifications/automations/' + pid, { method: 'PATCH', body: { automations } });
+    toast('Automatisations enregistrées ✔');
+  } catch (e) { toast(e.message, 1); }
+}
+
+// ---------- Journal ----------
+async function loadLog() {
+  const p = new URLSearchParams();
+  const t = document.getElementById('lgType').value; if (t) p.set('type', t);
+  const s = document.getElementById('lgStatus').value; if (s) p.set('status', s);
+  const q = document.getElementById('lgQ').value; if (q) p.set('q', q);
+  const list = await api('/notifications/log?' + p.toString());
+  const typeLbl = { transactional: 'Transaction', automation: 'Automatisation', marketing: 'Campagne' };
+  const step = (ok, label) => ok
+    ? `<span class="pill g" style="margin-right:4px">${label}</span>`
+    : `<span class="pill n" style="margin-right:4px;opacity:.45">${label}</span>`;
+  document.querySelector('#logTable tbody').innerHTML = list.map(n => `<tr>
+    <td style="font-size:12px">${new Date(n.created_at).toLocaleString('fr-FR')}</td>
+    <td>${esc(n.first_name)} ${esc(n.last_name || '')}<br><small style="color:var(--muted)">${esc(n.email || '')}</small></td>
+    <td style="font-size:13px">${esc(n.message)}</td>
+    <td style="font-size:13px">${esc(typeLbl[n.type] || n.type)}${n.campaign_name ? `<br><small style="color:var(--muted)">${esc(n.campaign_name)}</small>` : ''}</td>
+    <td style="font-size:13px">${esc(n.wallet_status)}</td>
+    <td style="white-space:nowrap">
+      ${step(n.status === 'sent' || n.status === 'simulated', 'Envoyé')}
+      ${step(!!n.delivered_at, 'Délivré')}
+      ${step(!!n.clicked_at, 'Cliqué')}
+      ${step(!!n.converted_at, 'Revenu')}
+    </td>
   </tr>`).join('') || '<tr><td colspan="6" style="color:var(--muted)">Aucune notification.</td></tr>';
 }
 

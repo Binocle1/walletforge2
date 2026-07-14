@@ -224,11 +224,24 @@ async function search(q) {
 }
 
 async function openSerial(serial) {
+  let data;
   try {
-    current = await api('/scan/' + encodeURIComponent(serial.trim()));
+    data = await api('/scan/' + encodeURIComponent(serial.trim()));
+  } catch (e) {
+    // Erreur réseau / carte inconnue : on reste sur le scanner
+    toast(e.message, 1);
+    if (scanner) scanner.resume();
+    return;
+  }
+  try {
+    current = data;
     renderProfile();
     show('pProfile');
-  } catch (e) { toast(e.message, 1); if (scanner) scanner.resume(); }
+  } catch (e) {
+    // Erreur d'affichage : on ne doit PAS la confondre avec une carte invalide
+    console.error('[renderProfile]', e);
+    toast('Erreur d\'affichage du profil : ' + e.message, 1);
+  }
 }
 
 function renderProfile() {
@@ -278,6 +291,7 @@ function renderProfile() {
     }
   }
   document.getElementById('cActions').innerHTML = acts.join('');
+
   document.getElementById('cRecent').innerHTML = '<b>Dernières actions</b><br>' +
     (c.recent || []).map(r => `${new Date(r.created_at).toLocaleString('fr-FR')} — ${esc(r.type)}${r.amount ? ' ' + r.amount + '€' : ''}`).join('<br>') || '';
 }

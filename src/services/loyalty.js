@@ -146,7 +146,10 @@ async function applyTransaction({ passId, type, amount, userId, locationId, comm
           pointsDelta = -spend;
           message = `${spend.toFixed(2)} € débités. Nouveau solde : ${(Number(pass.points) - spend).toFixed(2)} €`;
         } else if (program.type === 'stamps') {
-          stampsDelta = 1 * multiplier;
+          // BUGFIX : le multiplicateur VIP (x1.5) produisait un delta décimal
+          // -> INSERT d'un 1.5 dans une colonne INT = crash SQL. On arrondit.
+          stampsDelta = Math.max(1, Math.round(1 * multiplier));
+          const newStamps = pass.stamps + stampsDelta;
           message = `Merci ! ${stampsDelta} tampon(s) ajouté(s).`;
         } else {
           const pts = Math.round(Number(amount || 0) * Number(program.points_per_unit || 1) * multiplier * 100) / 100;
@@ -155,7 +158,7 @@ async function applyTransaction({ passId, type, amount, userId, locationId, comm
         }
         break;
       }
-      case 'add_stamp': stampsDelta = 1 * multiplier; message = `${stampsDelta} tampon(s) ajouté(s).`; break;
+      case 'add_stamp': stampsDelta = Math.max(1, Math.round(1 * multiplier)); message = `${stampsDelta} tampon(s) ajouté(s).`; break;
       case 'remove_stamp': {
         if (pass.stamps <= 0) throw new Error('Aucun tampon à retirer');
         stampsDelta = -1;
@@ -296,6 +299,11 @@ async function applyTransaction({ passId, type, amount, userId, locationId, comm
        }
     }
 
+    // Attribution : si le client a reçu une notif marketing dans les 72 h, on lui attribue la visite.
+    if (['purchase', 'add_stamp', 'add_points'].includes(type)) {
+      attributeConversion(passId, Number(amount || 0)).catch((e) => console.error('[attribution]', e.message));
+    }
+
     // Notification + rafraîchissement des wallets (best-effort, non bloquant, OUTSIDE the transaction)
     notifyAndRefresh(ctx, message, 'transactional').catch((e) => console.error('[wallet-update]', e.message));
 
@@ -308,31 +316,103 @@ async function applyTransaction({ passId, type, amount, userId, locationId, comm
   }
 }
 
-async function notifyAndRefresh(ctx, message, type = 'transactional', automationId = null) {
-  // Met à jour le message affiché sur la carte avec une expiration de 24h
-  await db.query(`UPDATE customer_passes SET announcement = $1, announcement_expires_at = now() + interval '24 hours', last_updated = now() WHERE id = $2`, [message, ctx.pass.id]);
+/**
+ * Primitive d'envoi UNIQUE de toute l'app (transactionnel, automation, campagne).
+ * Crée la ligne `notifications` (= le journal), pousse vers Apple/Google,
+ * et enregistre les événements pour le suivi (envoyé / délivré / cliqué / converti).
+ *
+ * @param extra { campaignId, ctaUrl } — optionnel, pour les campagnes marketing
+ * @returns {Promise<{id: string, status: string, click_token: string|null}>}
+ */
+async function notifyAndRefresh(ctx, message, type = 'transactional', automationId = null, extra = {}) {
+  const { campaignId = null, ctaUrl = null } = extra;
 
+  // 1) On crée d'abord la ligne "queued" : on a besoin du click_token pour construire le lien tracké.
+  const clickToken = ctaUrl ? crypto.randomBytes(9).toString('base64url') : null;
+  const { rows: nRows } = await db.query(
+    `INSERT INTO notifications (tenant_id, customer_id, pass_id, type, message, status,
+                                automation_id, campaign_id, channel, cta_url, click_token)
+     VALUES ($1,$2,$3,$4,$5,'queued',$6,$7,'wallet',$8,$9) RETURNING id, click_token`,
+    [ctx.tenantId, ctx.pass.customer_id, ctx.pass.id, type, message, automationId, campaignId, ctaUrl, clickToken]);
+  const notif = nRows[0];
+
+  // Lien tracké : on ne met JAMAIS l'URL brute sur la carte, on passe par /n/:token
+  // (c'est ce qui permet de savoir qui a cliqué).
+  const trackedUrl = clickToken ? `${process.env.BASE_URL}/n/${clickToken}` : null;
+  const cardMessage = trackedUrl ? `${message}\n👉 ${trackedUrl}` : message;
+
+  // 2) Le message s'affiche au dos de la carte pendant 24 h
+  await db.query(
+    `UPDATE customer_passes SET announcement = $1, announcement_expires_at = now() + interval '24 hours',
+            last_updated = now() WHERE id = $2`,
+    [cardMessage, ctx.pass.id]);
+
+  // 3) Push réel
   let status = 'simulated';
-
-  // Apple : push APNs vide -> l'iPhone re-télécharge le pass (la maj s'affiche sur l'écran verrouillé si champ "changeMessage")
-  if (apple.isConfigured()) {
-    const { rows } = await db.query(
-      'SELECT push_token FROM apple_registrations WHERE pass_id = $1', [ctx.pass.id]);
-    if (rows.length) {
-      const r = await apple.pushUpdate(rows.map((x) => x.push_token));
-      if (!r.simulated && r.sent > 0) status = 'sent';
+  let error = null;
+  try {
+    // Apple : push APNs vide -> l'iPhone re-télécharge le pass (cf. routes/wallet.js -> markDelivered)
+    if (apple.isConfigured()) {
+      const { rows } = await db.query('SELECT push_token FROM apple_registrations WHERE pass_id = $1', [ctx.pass.id]);
+      if (rows.length) {
+        const r = await apple.pushUpdate(rows.map((x) => x.push_token));
+        if (!r.simulated && r.sent > 0) status = 'sent';
+      }
     }
-  }
-  // Google : PATCH de l'objet + message sur la carte
-  if (google.isConfigured() && ['google', 'both'].includes(ctx.pass.wallet_status)) {
-    const r = await google.updateObject(ctx, message);
-    if (r.updated) status = 'sent';
+    // Google : PATCH de l'objet + message sur la carte
+    if (google.isConfigured() && ['google', 'both'].includes(ctx.pass.wallet_status)) {
+      const r = await google.updateObject(ctx, cardMessage);
+      if (r.updated) status = 'sent';
+    }
+  } catch (e) {
+    status = 'failed';
+    error = e.message;
   }
 
   await db.query(
-    `INSERT INTO notifications (tenant_id, customer_id, pass_id, type, message, status, automation_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-    [ctx.tenantId, ctx.pass.customer_id, ctx.pass.id, type, message, status, automationId]);
+    `UPDATE notifications SET status = $2, error = $3 WHERE id = $1`,
+    [notif.id, status, error]);
+  await db.query(
+    `INSERT INTO notification_events (notification_id, tenant_id, type, meta) VALUES ($1,$2,$3,$4)`,
+    [notif.id, ctx.tenantId, status === 'failed' ? 'failed' : 'sent', JSON.stringify({ wallet: ctx.pass.wallet_status })]);
+
+  return { id: notif.id, status, click_token: clickToken };
 }
 
-module.exports = { loadPassContext, createPass, applyTransaction, notifyAndRefresh };
+/**
+ * Appelé quand un iPhone re-télécharge son pass (web service Apple) :
+ * c'est la seule preuve fiable que la notif est bien arrivée sur l'appareil.
+ */
+async function markDelivered(passId) {
+  const { rows } = await db.query(
+    `UPDATE notifications SET delivered_at = now()
+     WHERE pass_id = $1 AND delivered_at IS NULL AND status IN ('sent','simulated')
+       AND created_at > now() - interval '7 days'
+     RETURNING id, tenant_id`, [passId]);
+  for (const n of rows) {
+    await db.query(`INSERT INTO notification_events (notification_id, tenant_id, type) VALUES ($1,$2,'delivered')`,
+      [n.id, n.tenant_id]).catch(() => {});
+  }
+  return rows.length;
+}
+
+/**
+ * Attribution : une transaction dans les 72 h suivant une notif = conversion.
+ * C'est LA métrique qui compte (CA généré par campagne), pas le taux d'ouverture.
+ */
+async function attributeConversion(passId, amount) {
+  const { rows } = await db.query(
+    `UPDATE notifications SET converted_at = now(), revenue = coalesce($2, 0)
+     WHERE id = (
+       SELECT id FROM notifications
+       WHERE pass_id = $1 AND converted_at IS NULL AND type IN ('marketing','automation')
+         AND created_at > now() - interval '72 hours'
+       ORDER BY created_at DESC LIMIT 1
+     ) RETURNING id, tenant_id`, [passId, amount || 0]);
+  if (rows[0]) {
+    await db.query(`INSERT INTO notification_events (notification_id, tenant_id, type, meta) VALUES ($1,$2,'conversion',$3)`,
+      [rows[0].id, rows[0].tenant_id, JSON.stringify({ amount: amount || 0 })]).catch(() => {});
+  }
+}
+
+module.exports = { loadPassContext, createPass, applyTransaction, notifyAndRefresh, markDelivered, attributeConversion };

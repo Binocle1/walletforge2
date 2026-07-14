@@ -1,8 +1,12 @@
 const db = require('./db');
 const loyalty = require('./services/loyalty');
+const messaging = require('./services/messaging');
 
 async function runTasks() {
   try {
+    // 0. Campagnes programmées arrivées à échéance
+    await messaging.runScheduled().catch((e) => console.error('[cron-campaigns]', e.message));
+
     const { rows: programs } = await db.query(`SELECT id, tenant_id, automations FROM loyalty_programs WHERE active = true`);
     
     for (const prog of programs) {

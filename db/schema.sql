@@ -125,6 +125,11 @@ CREATE TABLE customer_passes (
   wallet_status TEXT NOT NULL DEFAULT 'none',    -- none | apple | google | both
   announcement  TEXT,
   announcement_expires_at TIMESTAMPTZ,
+  -- Gamification / VIP / parrainage (étaient utilisés par le code sans exister en base)
+  tags           TEXT[] NOT NULL DEFAULT '{}',   -- ['VIP Or'], ['VIP Argent']...
+  source         TEXT,                           -- serial_number du parrain
+  current_streak INT NOT NULL DEFAULT 0,
+  last_visit     TIMESTAMPTZ,
   last_updated  TIMESTAMPTZ NOT NULL DEFAULT now(),
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (customer_id, program_id)

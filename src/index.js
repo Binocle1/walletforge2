@@ -77,6 +77,7 @@ app.use('/api/wallet', walletRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/apple', walletRoutes);          // web service Apple : /api/apple/v1/...
 app.use('/api', txRoutes);
+app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/billing', billing.router);
 app.use('/api/admin', require('./routes/admin'));
 
@@ -88,6 +89,22 @@ app.get('/api/status', required, (req, res) => {
     google_wallet: google.isConfigured(),
     stripe: Boolean(process.env.STRIPE_SECRET_KEY),
   });
+});
+
+// ---------- Lien tracké des notifications : /n/:token -> redirection ----------
+// C'est ce qui permet de savoir QUI a cliqué sur le message d'une campagne.
+const messaging = require('./services/messaging');
+app.get('/n/:token', async (req, res) => {
+  try {
+    const n = await messaging.trackClick(req.params.token, {
+      ip: req.ip, userAgent: req.headers['user-agent'],
+    });
+    if (!n || !n.cta_url) return res.redirect(302, process.env.BASE_URL || '/');
+    return res.redirect(302, n.cta_url);
+  } catch (e) {
+    console.error('[track-click]', e.message);
+    return res.redirect(302, process.env.BASE_URL || '/');
+  }
 });
 
 // ---------- Frontends statiques ----------

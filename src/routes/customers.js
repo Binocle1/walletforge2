@@ -5,19 +5,26 @@ const loyalty = require('../services/loyalty');
 
 // ---------- PUBLIC : Désinscription RGPD ----------
 router.get('/public/unsubscribe/:passId', async (req, res) => {
+  // BUGFIX : marketing_consent vit sur `customers`, pas sur `customer_passes`.
+  // L'ancienne requête (UPDATE customer_passes SET marketing_consent...) plantait
+  // systématiquement -> le lien de désinscription était cassé (risque RGPD).
   const { rows } = await db.query(
-    `UPDATE customer_passes p
-     SET marketing_consent = false, last_updated = now()
-     FROM customers c
-     WHERE c.id = p.customer_id AND p.id = $1
-     RETURNING c.id AS customer_id`, [req.params.passId]
+    `UPDATE customers c
+     SET marketing_consent = false,
+         consent_history = c.consent_history || $2::jsonb
+     FROM customer_passes p
+     WHERE p.customer_id = c.id AND p.id = $1
+     RETURNING c.id AS customer_id, c.tenant_id`,
+    [req.params.passId, JSON.stringify([{ marketing: false, at: new Date().toISOString(), via: 'unsubscribe_link' }])]
   );
-  if (!rows[0]) return res.status(404).send('Pass introuvable');
-  
+  if (!rows[0]) return res.status(404).send('Carte introuvable');
+
+  // On trace la désinscription dans le hub (elle remonte dans les KPIs).
   await db.query(
-    `UPDATE customers SET marketing_consent = false, consent_history = consent_history || $1::jsonb WHERE id = $2`,
-    [JSON.stringify([{ marketing: false, at: new Date().toISOString(), via: 'unsubscribe_link' }]), rows[0].customer_id]
-  );
+    `INSERT INTO notification_events (notification_id, tenant_id, type)
+     SELECT n.id, n.tenant_id, 'unsubscribe' FROM notifications n
+     WHERE n.pass_id = $1 ORDER BY n.created_at DESC LIMIT 1`, [req.params.passId]).catch(() => {});
+
   res.send('<html><body style="font-family:sans-serif;text-align:center;padding:50px"><h1>Désinscription confirmée</h1><p>Vous ne recevrez plus de notifications marketing.</p></body></html>');
 });
 
