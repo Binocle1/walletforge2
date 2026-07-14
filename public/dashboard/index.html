@@ -89,7 +89,7 @@ td{padding:10px;border-bottom:1px solid var(--line)}
       <label>Mot de passe</label>
       <div class="pwd-wrap">
         <input id="lPass" type="password" autocomplete="current-password" required>
-        <button type="button" class="pwd-toggle" onclick="togglePwd('lPass')">👁️</button>
+        <button type="button" class="pwd-toggle" style="font-size:13px;font-weight:600" onclick="togglePwd('lPass', this)">Afficher</button>
       </div>
       <div style="text-align:right;margin-top:8px"><a href="javascript:void(0)" onclick="showForgot()" style="font-size:13px;color:var(--pine)">Mot de passe oublié ?</a></div>
       <button class="btn" style="width:100%;margin-top:14px" type="submit" id="btnLogin">Se connecter</button>
@@ -105,7 +105,7 @@ td{padding:10px;border-bottom:1px solid var(--line)}
       <label>Entrez un nouveau mot de passe</label>
       <div class="pwd-wrap">
         <input id="nPass" type="password">
-        <button type="button" class="pwd-toggle" onclick="togglePwd('nPass')">👁️</button>
+        <button type="button" class="pwd-toggle" style="font-size:13px;font-weight:600" onclick="togglePwd('nPass', this)">Afficher</button>
       </div>
       <button class="btn amber" style="width:100%;margin-top:14px" onclick="resetPass()">Valider</button>
     </div>
@@ -116,7 +116,7 @@ td{padding:10px;border-bottom:1px solid var(--line)}
       <label>Mot de passe (8+ caractères)</label>
       <div class="pwd-wrap">
         <input id="rPass" type="password" minlength="8" required>
-        <button type="button" class="pwd-toggle" onclick="togglePwd('rPass')">👁️</button>
+        <button type="button" class="pwd-toggle" style="font-size:13px;font-weight:600" onclick="togglePwd('rPass', this)">Afficher</button>
       </div>
       <div class="row">
         <div style="flex:1"><label>Pays</label><input id="rCountry" value="FR" required></div>
@@ -386,7 +386,7 @@ td{padding:10px;border-bottom:1px solid var(--line)}
   <label>Mot de passe</label>
   <div class="pwd-wrap">
     <input id="tmPass" type="password" required>
-    <button type="button" class="pwd-toggle" onclick="togglePwd('tmPass')">👁️</button>
+    <button type="button" class="pwd-toggle" style="font-size:13px;font-weight:600" onclick="togglePwd('tmPass', this)">Afficher</button>
   </div>
   <label>Rôle</label>
   <select id="tmRole">
@@ -477,9 +477,11 @@ function toast(msg, err) {
 }
 const esc = (s) => String(s != null ? s : '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
-function togglePwd(id) {
+function togglePwd(id, btn) {
   const el = document.getElementById(id);
-  el.type = el.type === 'password' ? 'text' : 'password';
+  const isPwd = el.type === 'password';
+  el.type = isPwd ? 'text' : 'password';
+  if (btn) btn.textContent = isPwd ? 'Masquer' : 'Afficher';
 }
 
 function debounce(func, wait) {
@@ -562,7 +564,7 @@ async function loadHome() {
     ['Clients', s.total_customers], ['Nouveaux (30j)', s.new_customers_30d],
     ['Taux de retour', (s.return_rate != null ? s.return_rate : 0) + ' %'], ['Panier moyen', (s.avg_basket != null ? s.avg_basket : 0) + ' €'],
     ['Cartes Apple', s.apple_installs], ['Cartes Google', s.google_installs],
-    ['Transactions', s.total_transactions], ['CA déclaré', Number(s.total_amount || 0).toFixed(0) + ' €'],
+    ['Transactions', s.total_transactions], ['CA 30 jours', Number(s.revenue_30d || 0).toFixed(0) + ' €'],
     ['Notifications', s.notifications_sent], ['Non installées', s.not_installed],
   ].map(([l, v]) => `<div class="card stat"><small>${l}</small><h2>${v != null ? v : 0}</h2></div>`).join('');
   const days = s.tx_by_day || [];

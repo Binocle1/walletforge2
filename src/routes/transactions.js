@@ -250,6 +250,10 @@ router.get('/stats', required, async (req, res) => {
     ORDER BY tx_count DESC
   `, [req.auth.tid]);
     
+  const revenue30d = await db.query(
+    `SELECT coalesce(sum(amount),0)::float AS total FROM transactions WHERE tenant_id = $1 AND type='purchase' AND created_at > now() - interval '30 days'`,
+    [req.auth.tid]);
+
   res.json({
     ...(stats.rows[0] || {}),
     new_customers_30d: newCustomers.rows[0].n,
@@ -259,7 +263,8 @@ router.get('/stats', required, async (req, res) => {
     vendor_stats: vendor_stats.rows,
     rewards_redeemed: rewards.rows[0].n,
     return_rate: Math.round(retention.rows[0].return_rate || 0),
-    avg_basket: Math.round((retention.rows[0].avg_basket || 0) * 100) / 100
+    avg_basket: Math.round((retention.rows[0].avg_basket || 0) * 100) / 100,
+    revenue_30d: revenue30d.rows[0].total
   });
 });
 
